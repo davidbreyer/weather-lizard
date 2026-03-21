@@ -18,8 +18,8 @@
       <p class="eyebrow">National Weather Service</p>
       <h1>Weather Lizard</h1>
       <p class="intro">
-        This page uses your browser location to find the latest nearby observation from the
-        National Weather Service API.
+        Plan around the parts of the day that matter most. Weather Lizard uses your location to
+        turn National Weather Service data into practical forecast moments and recommendations.
       </p>
 
       <div class="actions">
@@ -37,11 +37,35 @@
         <p id="lastLoadedLabel" class="last-loaded-label">No weather data loaded yet.</p>
       </div>
 
+      <section id="alertsSection" class="alerts-panel hidden" aria-live="polite">
+        <div class="alerts-panel__header">
+          <div>
+            <p class="section-kicker">Active alerts</p>
+            <h2>Pay attention now</h2>
+          </div>
+          <p class="alerts-panel__note">Warnings, watches, advisories, and statements near your location.</p>
+        </div>
+
+        <div id="alertsList" class="alerts-list"></div>
+      </section>
+
+      <section id="eventForecastSection" class="event-forecast hidden" aria-live="polite">
+        <div class="event-forecast__header">
+          <div>
+            <p class="section-kicker">Plan your day</p>
+            <h2>Forecast by moment</h2>
+          </div>
+          <p class="event-forecast__note">Practical guidance built from the next 12 hours of forecast data.</p>
+        </div>
+
+        <div id="eventForecastList" class="event-forecast__list"></div>
+      </section>
+
       <section id="weatherCard" class="weather-card hidden" aria-live="polite">
         <div class="weather-card__header">
           <div>
             <p id="locationLabel" class="location-label">Loading location...</p>
-            <h2 id="summaryLabel">Current conditions</h2>
+            <h2 id="summaryLabel">Right now</h2>
           </div>
           <p id="temperatureLabel" class="temperature-label">--</p>
         </div>

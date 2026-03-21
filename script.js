@@ -2,6 +2,10 @@ const elements = {
   refreshButton: document.querySelector("#refreshButton"),
   statusMessage: document.querySelector("#statusMessage"),
   lastLoadedLabel: document.querySelector("#lastLoadedLabel"),
+  alertsSection: document.querySelector("#alertsSection"),
+  alertsList: document.querySelector("#alertsList"),
+  eventForecastSection: document.querySelector("#eventForecastSection"),
+  eventForecastList: document.querySelector("#eventForecastList"),
   weatherCard: document.querySelector("#weatherCard"),
   hourlyForecastSection: document.querySelector("#hourlyForecastSection"),
   hourlyForecastList: document.querySelector("#hourlyForecastList"),
@@ -50,19 +54,22 @@ async function loadWeather() {
       throw new Error("No hourly forecast endpoint was returned by the National Weather Service.");
     }
 
-    setStatus("Loading current conditions and hourly forecast...");
+    setStatus("Loading alerts, current conditions, and hourly forecast...");
 
-    const [stationUrl, hourlyForecast] = await Promise.all([
+    const [stationUrl, hourlyForecast, alertsData] = await Promise.all([
       getNearestStationUrl(pointProperties.observationStations),
-      fetchJson(pointProperties.forecastHourly)
+      fetchJson(pointProperties.forecastHourly),
+      fetchJson(`https://api.weather.gov/alerts/active?point=${latitude.toFixed(4)},${longitude.toFixed(4)}`)
     ]);
 
     const observation = await fetchJson(`${stationUrl}/observations/latest`);
+    renderAlerts(alertsData);
+    renderEventForecast(hourlyForecast);
     renderWeather(observation, nearbyLocation, stationUrl);
     renderHourlyForecast(hourlyForecast);
     hasLoadedWeather = true;
     setLastLoaded(new Date());
-    setStatus("Current conditions and hourly forecast loaded.", "success");
+    setStatus("Alerts, daily moments, current conditions, and hourly forecast are loaded.", "success");
   } catch (error) {
     if (!hasLoadedWeather) {
       clearWeatherDisplay();
@@ -94,11 +101,33 @@ function setLastLoaded(date) {
 }
 
 function showLoadingSkeletons() {
+  elements.alertsSection.classList.remove("hidden");
+  elements.alertsSection.classList.add("alerts-panel--loading");
+  elements.eventForecastSection.classList.remove("hidden");
+  elements.eventForecastSection.classList.add("event-forecast--loading");
   elements.weatherCard.classList.remove("hidden");
   elements.weatherCard.classList.add("weather-card--loading");
   elements.hourlyForecastSection.classList.remove("hidden");
   elements.hourlyForecastSection.classList.add("hourly-forecast--loading");
 
+  elements.alertsList.innerHTML = Array.from({ length: 2 }, () => `
+    <article class="alert-card alert-card--placeholder" aria-hidden="true">
+      <h3 class="alert-card__title">Loading alert</h3>
+      <p class="alert-card__chips">Loading</p>
+      <p class="alert-card__meta">Loading</p>
+      <p class="alert-card__summary">Loading alert details</p>
+      <p class="alert-card__instruction">Loading recommended action</p>
+    </article>
+  `).join("");
+  elements.eventForecastList.innerHTML = Array.from({ length: 6 }, () => `
+    <article class="event-card event-card--placeholder" aria-hidden="true">
+      <p class="event-card__eyebrow">Loading</p>
+      <p class="event-card__title">Loading</p>
+      <p class="event-card__verdict">Loading</p>
+      <p class="event-card__detail">Loading the best forecast moments for your day.</p>
+      <p class="event-card__meta">Loading details</p>
+    </article>
+  `).join("");
   elements.locationLabel.textContent = "Loading nearby location";
   elements.summaryLabel.textContent = "Loading current conditions";
   elements.temperatureLabel.textContent = "--";
@@ -119,13 +148,19 @@ function showLoadingSkeletons() {
 }
 
 function clearWeatherDisplay() {
+  elements.alertsSection.classList.add("hidden");
+  elements.eventForecastSection.classList.add("hidden");
   elements.weatherCard.classList.add("hidden");
   elements.hourlyForecastSection.classList.add("hidden");
   removeLoadingClasses();
+  elements.alertsList.innerHTML = "";
+  elements.eventForecastList.innerHTML = "";
   elements.hourlyForecastList.innerHTML = "";
 }
 
 function removeLoadingClasses() {
+  elements.alertsSection.classList.remove("alerts-panel--loading");
+  elements.eventForecastSection.classList.remove("event-forecast--loading");
   elements.weatherCard.classList.remove("weather-card--loading");
   elements.hourlyForecastSection.classList.remove("hourly-forecast--loading");
 }
@@ -217,6 +252,61 @@ function renderWeather(observationData, nearbyLocation, stationUrl) {
   elements.weatherCard.classList.remove("hidden");
 }
 
+function renderAlerts(alertsData) {
+  const alerts = (alertsData.features || [])
+    .map((feature) => feature.properties)
+    .filter(Boolean)
+    .slice(0, 3);
+
+  if (alerts.length === 0) {
+    elements.alertsSection.classList.add("hidden");
+    elements.alertsList.innerHTML = "";
+    elements.alertsSection.classList.remove("alerts-panel--loading");
+    return;
+  }
+
+  elements.alertsList.innerHTML = alerts.map((alert) => `
+    <article class="alert-card alert-card--${alertSeverityTone(alert.severity)}">
+      <h3 class="alert-card__title">${escapeHtml(alert.event || "Weather alert")}</h3>
+      <div class="alert-card__chips">
+        <span class="alert-chip alert-chip--severity-${alertSeverityTone(alert.severity)}">${escapeHtml(alert.severity || "Unknown severity")}</span>
+        <span class="alert-chip">${escapeHtml(alert.urgency || "Unknown urgency")}</span>
+        <span class="alert-chip">${escapeHtml(alert.certainty || "Unknown certainty")}</span>
+      </div>
+      <p class="alert-card__meta">
+        ${escapeHtml(alert.areaDesc || "Area unavailable")}<br>
+        ${formatAlertTimeRange(alert.effective, alert.expires)}
+      </p>
+      <p class="alert-card__summary">${escapeHtml(summarizeAlert(alert.headline || alert.description || "Alert details unavailable."))}</p>
+      ${alert.instruction ? `<p class="alert-card__instruction">${escapeHtml(alert.instruction)}</p>` : ""}
+    </article>
+  `).join("");
+
+  elements.alertsSection.classList.remove("alerts-panel--loading");
+  elements.alertsSection.classList.remove("hidden");
+}
+
+function renderEventForecast(hourlyForecastData) {
+  const periods = hourlyForecastData.properties?.periods ?? [];
+
+  if (periods.length === 0) {
+    throw new Error("No hourly forecast data was returned by the National Weather Service.");
+  }
+
+  const eventCards = [
+    buildTimedEventCard("Morning commute", "Today", periods, 6, 9),
+    buildTimedEventCard("Lunch", "Midday", periods, 11, 13),
+    buildTimedEventCard("Afternoon commute", "Later today", periods, 16, 18),
+    buildTimedEventCard("Evening & sunset", "Tonight", periods, 18, 21),
+    buildPatioCard(periods),
+    buildMowingCard(periods)
+  ];
+
+  elements.eventForecastList.innerHTML = eventCards.map(renderEventCard).join("");
+  elements.eventForecastSection.classList.remove("event-forecast--loading");
+  elements.eventForecastSection.classList.remove("hidden");
+}
+
 function renderHourlyForecast(hourlyForecastData) {
   const periods = hourlyForecastData.properties?.periods?.slice(0, 12);
 
@@ -248,6 +338,237 @@ function formatNearbyLocation(location) {
   const city = location.city || "Your area";
   const state = location.state ? `, ${location.state}` : "";
   return `${city}${state}`;
+}
+
+function buildTimedEventCard(title, eyebrow, periods, startHour, endHour) {
+  const period = findBestPeriodForHours(periods, startHour, endHour) || periods[0];
+  const score = scorePeriod(period);
+
+  return {
+    eyebrow,
+    title,
+    verdict: verdictLabel(score, false),
+    detail: buildTimedEventDetail(period),
+    meta: [
+      `${formatHourLabel(period.startTime)} · ${formatForecastTemperature(period.temperature, period.temperatureUnit)}`,
+      `Rain chance: ${formatForecastPercent(period.probabilityOfPrecipitation?.value)}`,
+      `Wind: ${formatForecastWind(period.windSpeed, period.windDirection)}`
+    ],
+    tone: scoreTone(score)
+  };
+}
+
+function buildPatioCard(periods) {
+  const candidatePeriods = periods.filter((period) => {
+    const hour = new Date(period.startTime).getHours();
+    return hour >= 16 && hour <= 21;
+  });
+  const targetPeriod = bestOutdoorPeriod(candidatePeriods.length > 0 ? candidatePeriods : periods.slice(0, 6));
+  const score = scoreOutdoorPeriod(targetPeriod);
+
+  return {
+    eyebrow: "Outdoor",
+    title: "Patio weather",
+    verdict: verdictLabel(score, true),
+    detail: patioDetail(score, targetPeriod),
+    meta: [
+      `${formatHourLabel(targetPeriod.startTime)} · ${formatForecastTemperature(targetPeriod.temperature, targetPeriod.temperatureUnit)}`,
+      `Rain chance: ${formatForecastPercent(targetPeriod.probabilityOfPrecipitation?.value)}`,
+      `Wind: ${formatForecastWind(targetPeriod.windSpeed, targetPeriod.windDirection)}`
+    ],
+    tone: scoreTone(score)
+  };
+}
+
+function buildMowingCard(periods) {
+  const candidatePeriods = periods.filter((period) => {
+    const hour = new Date(period.startTime).getHours();
+    return hour >= 9 && hour <= 18;
+  });
+  const targetPeriod = bestOutdoorPeriod(candidatePeriods.length > 0 ? candidatePeriods : periods.slice(0, 8));
+  const score = scoreMowingPeriod(targetPeriod);
+
+  return {
+    eyebrow: "Yard work",
+    title: "Mow the lawn?",
+    verdict: verdictLabel(score, true),
+    detail: mowingDetail(score, targetPeriod),
+    meta: [
+      `${formatHourLabel(targetPeriod.startTime)} · ${formatForecastTemperature(targetPeriod.temperature, targetPeriod.temperatureUnit)}`,
+      `Rain chance: ${formatForecastPercent(targetPeriod.probabilityOfPrecipitation?.value)}`,
+      `Wind: ${formatForecastWind(targetPeriod.windSpeed, targetPeriod.windDirection)}`
+    ],
+    tone: scoreTone(score)
+  };
+}
+
+function renderEventCard(card) {
+  return `
+    <article class="event-card event-card--${card.tone}">
+      <p class="event-card__eyebrow">${card.eyebrow}</p>
+      <h3 class="event-card__title">${card.title}</h3>
+      <p class="event-card__verdict">${card.verdict}</p>
+      <p class="event-card__detail">${card.detail}</p>
+      <p class="event-card__meta">
+        <span>${card.meta[0]}</span>
+        <span>${card.meta[1]}</span>
+        <span>${card.meta[2]}</span>
+      </p>
+    </article>
+  `;
+}
+
+function findBestPeriodForHours(periods, startHour, endHour) {
+  return periods.find((period) => {
+    const hour = new Date(period.startTime).getHours();
+    return hour >= startHour && hour <= endHour;
+  });
+}
+
+function scorePeriod(period) {
+  let score = 2;
+  const precipitation = period.probabilityOfPrecipitation?.value ?? 0;
+  const temperature = typeof period.temperature === "number" ? period.temperature : null;
+  const windMph = parseWindSpeedMph(period.windSpeed);
+  const forecastText = `${period.shortForecast || ""} ${period.detailedForecast || ""}`.toLowerCase();
+
+  if (precipitation >= 60 || /thunder|storm|snow|ice|freezing/.test(forecastText)) {
+    score -= 2;
+  } else if (precipitation >= 30) {
+    score -= 1;
+  }
+
+  if (windMph >= 22) {
+    score -= 1;
+  }
+
+  if (temperature !== null && (temperature <= 28 || temperature >= 95)) {
+    score -= 1;
+  } else if (temperature !== null && (temperature <= 40 || temperature >= 88)) {
+    score -= 0.5;
+  }
+
+  return Math.max(0, Math.min(3, score));
+}
+
+function scoreOutdoorPeriod(period) {
+  let score = 3;
+  const precipitation = period.probabilityOfPrecipitation?.value ?? 0;
+  const temperature = typeof period.temperature === "number" ? period.temperature : null;
+  const windMph = parseWindSpeedMph(period.windSpeed);
+
+  if (precipitation >= 50) {
+    score -= 2;
+  } else if (precipitation >= 25) {
+    score -= 1;
+  }
+
+  if (windMph >= 18) {
+    score -= 1;
+  } else if (windMph >= 12) {
+    score -= 0.5;
+  }
+
+  if (temperature !== null && (temperature < 58 || temperature > 90)) {
+    score -= 1;
+  } else if (temperature !== null && (temperature < 65 || temperature > 84)) {
+    score -= 0.5;
+  }
+
+  return Math.max(0, Math.min(3, score));
+}
+
+function scoreMowingPeriod(period) {
+  let score = 3;
+  const precipitation = period.probabilityOfPrecipitation?.value ?? 0;
+  const temperature = typeof period.temperature === "number" ? period.temperature : null;
+  const windMph = parseWindSpeedMph(period.windSpeed);
+
+  if (precipitation >= 40) {
+    score -= 2;
+  } else if (precipitation >= 20) {
+    score -= 1;
+  }
+
+  if (windMph >= 20) {
+    score -= 1;
+  } else if (windMph >= 14) {
+    score -= 0.5;
+  }
+
+  if (temperature !== null && (temperature < 45 || temperature > 92)) {
+    score -= 1;
+  } else if (temperature !== null && (temperature < 55 || temperature > 85)) {
+    score -= 0.5;
+  }
+
+  return Math.max(0, Math.min(3, score));
+}
+
+function bestOutdoorPeriod(periods) {
+  return periods.reduce((best, period) => {
+    if (!best) {
+      return period;
+    }
+
+    return scoreOutdoorPeriod(period) > scoreOutdoorPeriod(best) ? period : best;
+  }, null) || periods[0];
+}
+
+function scoreTone(score) {
+  if (score >= 2.5) {
+    return "good";
+  }
+
+  if (score >= 1.25) {
+    return "mixed";
+  }
+
+  return "rough";
+}
+
+function verdictLabel(score, plainLanguage) {
+  if (score >= 2.5) {
+    return plainLanguage ? "Looks good" : "Good to go";
+  }
+
+  if (score >= 1.25) {
+    return plainLanguage ? "Maybe" : "Plan ahead";
+  }
+
+  return plainLanguage ? "Probably skip" : "Rough weather";
+}
+
+function buildTimedEventDetail(period) {
+  const precipitation = period.probabilityOfPrecipitation?.value;
+  const wind = formatForecastWind(period.windSpeed, period.windDirection);
+  const summary = period.shortForecast || "Forecast unavailable";
+
+  return `${summary}${precipitation ? ` with a ${Math.round(precipitation)}% chance of rain` : ""}. ${wind !== "N/A" ? `Winds ${wind.toLowerCase()}.` : ""}`.trim();
+}
+
+function patioDetail(score, period) {
+  if (score >= 2.5) {
+    return `This looks like a solid window to sit outside, especially around ${formatHourLabel(period.startTime).toLowerCase()}.`;
+  }
+
+  if (score >= 1.25) {
+    return `You could probably make patio plans, but keep an eye on wind or passing showers.`;
+  }
+
+  return `This does not look especially comfortable for patio time without a backup plan.`;
+}
+
+function mowingDetail(score, period) {
+  if (score >= 2.5) {
+    return `If you want to mow, ${formatHourLabel(period.startTime).toLowerCase()} looks like your best shot.`;
+  }
+
+  if (score >= 1.25) {
+    return `Mowing may work, but the grass could get damp or breezy conditions could be annoying.`;
+  }
+
+  return `I'd wait for a better weather window before mowing the lawn.`;
 }
 
 function formatTemperature(celsius) {
@@ -307,6 +628,21 @@ function formatForecastWind(speed, direction) {
   return `${speed || ""} ${direction || ""}`.trim();
 }
 
+function parseWindSpeedMph(windSpeed) {
+  if (!windSpeed) {
+    return 0;
+  }
+
+  const values = String(windSpeed).match(/\d+/g);
+
+  if (!values || values.length === 0) {
+    return 0;
+  }
+
+  const numbers = values.map(Number);
+  return Math.max(...numbers);
+}
+
 function formatVisibility(meters) {
   if (typeof meters !== "number") {
     return "Unavailable";
@@ -336,4 +672,54 @@ function formatHourLabel(timestamp) {
     weekday: "short",
     hour: "numeric"
   }).format(new Date(timestamp));
+}
+
+function formatAlertTimeRange(effective, expires) {
+  if (!effective && !expires) {
+    return "Timing unavailable";
+  }
+
+  const parts = [];
+
+  if (effective) {
+    parts.push(`From ${formatDateTime(effective)}`);
+  }
+
+  if (expires) {
+    parts.push(`Until ${formatDateTime(expires)}`);
+  }
+
+  return parts.join(" · ");
+}
+
+function summarizeAlert(text) {
+  const cleanText = String(text).replace(/\s+/g, " ").trim();
+  return cleanText.length > 240 ? `${cleanText.slice(0, 237)}...` : cleanText;
+}
+
+function alertSeverityTone(severity) {
+  const normalized = String(severity || "unknown").toLowerCase();
+
+  if (normalized === "extreme" || normalized === "severe") {
+    return normalized;
+  }
+
+  if (normalized === "moderate") {
+    return "moderate";
+  }
+
+  if (normalized === "minor") {
+    return "minor";
+  }
+
+  return "unknown";
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
