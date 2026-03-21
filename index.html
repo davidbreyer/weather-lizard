@@ -3,7 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Weather Lizard shows current weather and the next 12 hours of forecast for your location using the National Weather Service API.">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta property="og:title" content="Weather Lizard">
+  <meta property="og:description" content="Current local weather and hourly forecast powered by the National Weather Service API.">
+  <meta property="og:type" content="website">
   <title>Weather Lizard</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -20,9 +26,16 @@
         <button id="refreshButton" type="button">Get my weather</button>
       </div>
 
-      <p id="statusMessage" class="status-message" role="status" aria-live="polite">
-        Click the button to allow location access and load the current conditions.
+      <p class="helper-text">
+        Allow location access when prompted. You can refresh at any time to pull the latest nearby conditions.
       </p>
+
+      <div class="status-panel">
+        <p id="statusMessage" class="status-message status-message--info" role="status" aria-live="polite">
+          Click the button to allow location access and load the current conditions.
+        </p>
+        <p id="lastLoadedLabel" class="last-loaded-label">No weather data loaded yet.</p>
+      </div>
 
       <section id="weatherCard" class="weather-card hidden" aria-live="polite">
         <div class="weather-card__header">
@@ -72,6 +85,17 @@
 
         <div id="hourlyForecastList" class="hourly-forecast__list"></div>
       </section>
+
+      <footer class="site-footer">
+        <p>
+          Weather data from the
+          <a href="https://www.weather.gov/documentation/services-web-api" target="_blank" rel="noreferrer">National Weather Service API</a>.
+        </p>
+        <p>
+          Source code on
+          <a href="https://github.com/davidbreyer/weather-lizard" target="_blank" rel="noreferrer">GitHub</a>.
+        </p>
+      </footer>
     </section>
   </main>
 

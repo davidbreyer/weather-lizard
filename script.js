@@ -1,6 +1,7 @@
 const elements = {
   refreshButton: document.querySelector("#refreshButton"),
   statusMessage: document.querySelector("#statusMessage"),
+  lastLoadedLabel: document.querySelector("#lastLoadedLabel"),
   weatherCard: document.querySelector("#weatherCard"),
   hourlyForecastSection: document.querySelector("#hourlyForecastSection"),
   hourlyForecastList: document.querySelector("#hourlyForecastList"),
@@ -19,11 +20,17 @@ const nwsHeaders = {
   Accept: "application/geo+json"
 };
 
+let hasLoadedWeather = false;
+
 elements.refreshButton.addEventListener("click", loadWeather);
 
 async function loadWeather() {
   setLoadingState(true);
-  setStatus("Getting your location...");
+  setStatus(hasLoadedWeather ? "Refreshing your local weather..." : "Getting your location...");
+
+  if (!hasLoadedWeather) {
+    showLoadingSkeletons();
+  }
 
   try {
     const position = await getCurrentPosition();
@@ -53,11 +60,17 @@ async function loadWeather() {
     const observation = await fetchJson(`${stationUrl}/observations/latest`);
     renderWeather(observation, nearbyLocation, stationUrl);
     renderHourlyForecast(hourlyForecast);
-    setStatus("Current conditions and hourly forecast loaded.");
+    hasLoadedWeather = true;
+    setLastLoaded(new Date());
+    setStatus("Current conditions and hourly forecast loaded.", "success");
   } catch (error) {
-    elements.weatherCard.classList.add("hidden");
-    elements.hourlyForecastSection.classList.add("hidden");
-    setStatus(error.message);
+    if (!hasLoadedWeather) {
+      clearWeatherDisplay();
+    } else {
+      removeLoadingClasses();
+    }
+
+    setStatus(hasLoadedWeather ? `${error.message} Showing your last loaded weather data.` : error.message, "error");
   } finally {
     setLoadingState(false);
   }
@@ -65,11 +78,56 @@ async function loadWeather() {
 
 function setLoadingState(isLoading) {
   elements.refreshButton.disabled = isLoading;
-  elements.refreshButton.textContent = isLoading ? "Loading..." : "Refresh weather";
+  elements.refreshButton.textContent = isLoading ? "Loading..." : hasLoadedWeather ? "Refresh weather" : "Get my weather";
 }
 
-function setStatus(message) {
+function setStatus(message, type = "info") {
   elements.statusMessage.textContent = message;
+  elements.statusMessage.className = `status-message status-message--${type}`;
+}
+
+function setLastLoaded(date) {
+  elements.lastLoadedLabel.textContent = `Last refreshed ${new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date)}.`;
+}
+
+function showLoadingSkeletons() {
+  elements.weatherCard.classList.remove("hidden");
+  elements.weatherCard.classList.add("weather-card--loading");
+  elements.hourlyForecastSection.classList.remove("hidden");
+  elements.hourlyForecastSection.classList.add("hourly-forecast--loading");
+
+  elements.locationLabel.textContent = "Loading nearby location";
+  elements.summaryLabel.textContent = "Loading current conditions";
+  elements.temperatureLabel.textContent = "--";
+  elements.conditionValue.textContent = "Loading";
+  elements.windValue.textContent = "Loading";
+  elements.humidityValue.textContent = "Loading";
+  elements.visibilityValue.textContent = "Loading";
+  elements.stationValue.textContent = "Loading";
+  elements.updatedValue.textContent = "Loading";
+  elements.hourlyForecastList.innerHTML = Array.from({ length: 6 }, () => `
+    <article class="hour-card hour-card--placeholder" aria-hidden="true">
+      <p class="hour-card__time">Loading</p>
+      <p class="hour-card__temp">--</p>
+      <p class="hour-card__summary">Loading hourly forecast</p>
+      <p class="hour-card__meta"><span>Loading</span><span>Loading</span></p>
+    </article>
+  `).join("");
+}
+
+function clearWeatherDisplay() {
+  elements.weatherCard.classList.add("hidden");
+  elements.hourlyForecastSection.classList.add("hidden");
+  removeLoadingClasses();
+  elements.hourlyForecastList.innerHTML = "";
+}
+
+function removeLoadingClasses() {
+  elements.weatherCard.classList.remove("weather-card--loading");
+  elements.hourlyForecastSection.classList.remove("hourly-forecast--loading");
 }
 
 function getCurrentPosition() {
@@ -80,7 +138,7 @@ function getCurrentPosition() {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, (error) => {
       const locationErrors = {
-        1: "Location access was denied. Please allow location access and try again.",
+        1: "Location access was denied. Please allow location access in your browser settings and try again.",
         2: "Your location could not be determined. Please try again.",
         3: "Location lookup timed out. Please try again."
       };
@@ -105,11 +163,29 @@ async function getNearestStationUrl(stationsUrl) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: nwsHeaders
-  });
+  let response;
+
+  try {
+    response = await fetch(url, {
+      headers: nwsHeaders
+    });
+  } catch (error) {
+    throw new Error("The weather service could not be reached. Please check your connection and try again.");
+  }
 
   if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("Weather data was not available for your location.");
+    }
+
+    if (response.status === 429) {
+      throw new Error("The weather service is busy right now. Please wait a moment and try again.");
+    }
+
+    if (response.status >= 500) {
+      throw new Error("The weather service is temporarily unavailable. Please try again soon.");
+    }
+
     throw new Error(`Weather request failed with status ${response.status}.`);
   }
 
@@ -137,6 +213,7 @@ function renderWeather(observationData, nearbyLocation, stationUrl) {
   elements.visibilityValue.textContent = formatVisibility(visibilityM);
   elements.stationValue.textContent = stationCode;
   elements.updatedValue.textContent = formatDateTime(properties.timestamp);
+  removeLoadingClasses();
   elements.weatherCard.classList.remove("hidden");
 }
 
@@ -153,12 +230,13 @@ function renderHourlyForecast(hourlyForecastData) {
       <p class="hour-card__temp">${formatForecastTemperature(period.temperature, period.temperatureUnit)}</p>
       <p class="hour-card__summary">${period.shortForecast || "Forecast unavailable"}</p>
       <p class="hour-card__meta">
-        Rain: ${formatForecastPercent(period.probabilityOfPrecipitation?.value)}<br>
-        Wind: ${period.windSpeed || "N/A"} ${period.windDirection || ""}
+        <span>Rain chance: ${formatForecastPercent(period.probabilityOfPrecipitation?.value)}</span>
+        <span>Wind: ${formatForecastWind(period.windSpeed, period.windDirection)}</span>
       </p>
     </article>
   `).join("");
 
+  elements.hourlyForecastSection.classList.remove("hourly-forecast--loading");
   elements.hourlyForecastSection.classList.remove("hidden");
 }
 
@@ -219,6 +297,14 @@ function formatPercent(value) {
 
 function formatForecastPercent(value) {
   return typeof value === "number" ? `${Math.round(value)}%` : "N/A";
+}
+
+function formatForecastWind(speed, direction) {
+  if (!speed && !direction) {
+    return "N/A";
+  }
+
+  return `${speed || ""} ${direction || ""}`.trim();
 }
 
 function formatVisibility(meters) {

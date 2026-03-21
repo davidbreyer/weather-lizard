@@ -4,6 +4,17 @@
   line-height: 1.5;
   color: #10233f;
   background: #dbeafe;
+  --panel-background: rgba(255, 255, 255, 0.92);
+  --panel-border: rgba(148, 163, 184, 0.35);
+  --surface-dark: #0f172a;
+  --surface-light: #eff6ff;
+  --text-muted: #475569;
+  --status-info-bg: #dbeafe;
+  --status-info-fg: #1e3a8a;
+  --status-success-bg: #dcfce7;
+  --status-success-fg: #166534;
+  --status-error-bg: #fee2e2;
+  --status-error-fg: #991b1b;
 }
 
 * {
@@ -13,6 +24,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  color: #10233f;
   background:
     radial-gradient(circle at top, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 45%),
     linear-gradient(180deg, #c7e7ff 0%, #eaf4ff 100%);
@@ -26,9 +38,9 @@ body {
 }
 
 .weather-panel {
-  width: min(100%, 760px);
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  width: min(100%, 860px);
+  background: var(--panel-background);
+  border: 1px solid var(--panel-border);
   border-radius: 20px;
   box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
   padding: 32px;
@@ -76,21 +88,59 @@ button:hover {
   transform: translateY(-1px);
 }
 
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 3px;
+}
+
 button:disabled {
   opacity: 0.7;
   cursor: wait;
   transform: none;
 }
 
+.helper-text {
+  margin: 12px 0 0;
+  color: var(--text-muted);
+}
+
+.status-panel {
+  margin-top: 18px;
+}
+
 .status-message {
   min-height: 1.5em;
-  margin: 18px 0 0;
-  color: #334155;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-weight: 600;
+}
+
+.status-message--info {
+  background: var(--status-info-bg);
+  color: var(--status-info-fg);
+}
+
+.status-message--success {
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
+}
+
+.status-message--error {
+  background: var(--status-error-bg);
+  color: var(--status-error-fg);
+}
+
+.last-loaded-label {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
 }
 
 .weather-card {
   margin-top: 24px;
-  background: #0f172a;
+  background: var(--surface-dark);
   color: #f8fafc;
   border-radius: 18px;
   padding: 24px;
@@ -149,6 +199,35 @@ button:disabled {
   display: none;
 }
 
+.weather-card--loading,
+.hourly-forecast--loading {
+  opacity: 0.82;
+}
+
+.weather-card--loading .temperature-label,
+.weather-card--loading dd,
+.weather-card--loading .location-label,
+.weather-card--loading h2,
+.hour-card--placeholder .hour-card__time,
+.hour-card--placeholder .hour-card__temp,
+.hour-card--placeholder .hour-card__summary,
+.hour-card--placeholder .hour-card__meta {
+  color: transparent;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
+  background-size: 200% 100%;
+  animation: shimmer 1.3s infinite;
+  border-radius: 10px;
+}
+
+.weather-card--loading h2,
+.weather-card--loading .location-label {
+  width: max-content;
+}
+
+.weather-card--loading .temperature-label {
+  min-width: 120px;
+}
+
 .hourly-forecast {
   margin-top: 24px;
   padding: 24px;
@@ -194,8 +273,9 @@ button:disabled {
 .hour-card {
   padding: 16px;
   border-radius: 14px;
-  background: #eff6ff;
+  background: var(--surface-light);
   border: 1px solid rgba(96, 165, 250, 0.25);
+  min-height: 176px;
 }
 
 .hour-card__time {
@@ -220,12 +300,48 @@ button:disabled {
 .hour-card__meta {
   margin: 12px 0 0;
   font-size: 0.9rem;
-  color: #475569;
+  color: var(--text-muted);
+}
+
+.hour-card__meta span {
+  display: block;
+}
+
+.site-footer {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.site-footer p {
+  margin: 8px 0 0;
+}
+
+.site-footer a {
+  color: #1d4ed8;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 @media (max-width: 640px) {
+  .app-shell {
+    padding: 14px;
+  }
+
   .weather-panel {
-    padding: 24px;
+    padding: 22px;
   }
 
   .weather-card__header {
@@ -242,5 +358,9 @@ button:disabled {
 
   .hourly-forecast__note {
     text-align: left;
+  }
+
+  button {
+    width: 100%;
   }
 }
