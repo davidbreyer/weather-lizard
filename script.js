@@ -6,6 +6,7 @@ const elements = {
   alertsList: document.querySelector("#alertsList"),
   eventForecastSection: document.querySelector("#eventForecastSection"),
   eventForecastList: document.querySelector("#eventForecastList"),
+  eventForecastNote: document.querySelector("#eventForecastNote"),
   weatherCard: document.querySelector("#weatherCard"),
   hourlyForecastSection: document.querySelector("#hourlyForecastSection"),
   hourlyForecastList: document.querySelector("#hourlyForecastList"),
@@ -293,14 +294,13 @@ function renderEventForecast(hourlyForecastData) {
     throw new Error("No hourly forecast data was returned by the National Weather Service.");
   }
 
-  const eventCards = [
-    buildTimedEventCard("Morning commute", "Today", periods, 6, 9),
-    buildTimedEventCard("Lunch", "Midday", periods, 11, 13),
-    buildTimedEventCard("Afternoon commute", "Later today", periods, 16, 18),
-    buildTimedEventCard("Evening & sunset", "Tonight", periods, 18, 21),
-    buildPatioCard(periods),
-    buildMowingCard(periods)
-  ];
+  const anchorDate = getEventAnchorDate(periods);
+  const weekend = isWeekend(anchorDate);
+  const eventCards = weekend ? buildWeekendEventCards(periods) : buildWeekdayEventCards(periods);
+
+  elements.eventForecastNote.textContent = weekend
+    ? "Weekend-friendly guidance built from the upcoming hourly forecast."
+    : "Weekday guidance built around commute windows and the rest of your day.";
 
   elements.eventForecastList.innerHTML = eventCards.map(renderEventCard).join("");
   elements.eventForecastSection.classList.remove("event-forecast--loading");
@@ -342,13 +342,47 @@ function formatNearbyLocation(location) {
 
 function buildTimedEventCard(title, eyebrow, periods, startHour, endHour) {
   const period = findBestPeriodForHours(periods, startHour, endHour) || periods[0];
-  const score = scorePeriod(period);
+  return buildEventCardFromPeriod(period, title, eyebrow);
+}
+
+function buildWeekdayEventCards(periods) {
+  return [
+    buildTimedEventCard("Morning commute", "Today", periods, 6, 9),
+    buildTimedEventCard("Lunch", "Midday", periods, 11, 13),
+    buildTimedEventCard("Afternoon commute", "Later today", periods, 16, 18),
+    buildTimedEventCard("Evening & sunset", "Tonight", periods, 18, 21),
+    buildPatioCard(periods),
+    buildMowingCard(periods)
+  ];
+}
+
+function buildWeekendEventCards(periods) {
+  const morningPeriod = findBestPeriodForHours(periods, 8, 10) || periods[0];
+  const brunchPeriod = findBestPeriodForHours(periods, 10, 13) || periods[0];
+  const afternoonPeriod = findBestPeriodForHours(periods, 13, 17) || periods[0];
+  const eveningPeriod = findBestPeriodForHours(periods, 18, 21) || periods[0];
+
+  return [
+    buildEventCardFromPeriod(morningPeriod, weekendMorningTitle(morningPeriod), formatWeekdayName(morningPeriod.startTime)),
+    buildEventCardFromPeriod(brunchPeriod, "Brunch", formatWeekdayName(brunchPeriod.startTime)),
+    buildEventCardFromPeriod(afternoonPeriod, weekendAfternoonTitle(afternoonPeriod), formatWeekdayName(afternoonPeriod.startTime)),
+    buildEventCardFromPeriod(eveningPeriod, weekendEveningTitle(eveningPeriod), formatWeekdayName(eveningPeriod.startTime)),
+    buildPatioCard(periods),
+    buildMowingCard(periods)
+  ];
+}
+
+function buildEventCardFromPeriod(period, title, eyebrow, options = {}) {
+  const scoreFunction = options.scoreFunction || scorePeriod;
+  const verdictPlainLanguage = options.verdictPlainLanguage || false;
+  const detailBuilder = options.detailBuilder || ((_, targetPeriod) => buildTimedEventDetail(targetPeriod));
+  const score = scoreFunction(period);
 
   return {
-    eyebrow,
+    eyebrow: resolveEventEyebrow(period.startTime, eyebrow),
     title,
-    verdict: verdictLabel(score, false),
-    detail: buildTimedEventDetail(period),
+    verdict: verdictLabel(score, verdictPlainLanguage),
+    detail: detailBuilder(score, period),
     meta: [
       `${formatHourLabel(period.startTime)} · ${formatForecastTemperature(period.temperature, period.temperatureUnit)}`,
       `Rain chance: ${formatForecastPercent(period.probabilityOfPrecipitation?.value)}`,
@@ -364,20 +398,12 @@ function buildPatioCard(periods) {
     return hour >= 16 && hour <= 21;
   });
   const targetPeriod = bestOutdoorPeriod(candidatePeriods.length > 0 ? candidatePeriods : periods.slice(0, 6));
-  const score = scoreOutdoorPeriod(targetPeriod);
 
-  return {
-    eyebrow: "Outdoor",
-    title: "Patio weather",
-    verdict: verdictLabel(score, true),
-    detail: patioDetail(score, targetPeriod),
-    meta: [
-      `${formatHourLabel(targetPeriod.startTime)} · ${formatForecastTemperature(targetPeriod.temperature, targetPeriod.temperatureUnit)}`,
-      `Rain chance: ${formatForecastPercent(targetPeriod.probabilityOfPrecipitation?.value)}`,
-      `Wind: ${formatForecastWind(targetPeriod.windSpeed, targetPeriod.windDirection)}`
-    ],
-    tone: scoreTone(score)
-  };
+  return buildEventCardFromPeriod(targetPeriod, "Patio weather", "Outdoor", {
+    scoreFunction: scoreOutdoorPeriod,
+    verdictPlainLanguage: true,
+    detailBuilder: patioDetail
+  });
 }
 
 function buildMowingCard(periods) {
@@ -386,20 +412,12 @@ function buildMowingCard(periods) {
     return hour >= 9 && hour <= 18;
   });
   const targetPeriod = bestOutdoorPeriod(candidatePeriods.length > 0 ? candidatePeriods : periods.slice(0, 8));
-  const score = scoreMowingPeriod(targetPeriod);
 
-  return {
-    eyebrow: "Yard work",
-    title: "Mow the lawn?",
-    verdict: verdictLabel(score, true),
-    detail: mowingDetail(score, targetPeriod),
-    meta: [
-      `${formatHourLabel(targetPeriod.startTime)} · ${formatForecastTemperature(targetPeriod.temperature, targetPeriod.temperatureUnit)}`,
-      `Rain chance: ${formatForecastPercent(targetPeriod.probabilityOfPrecipitation?.value)}`,
-      `Wind: ${formatForecastWind(targetPeriod.windSpeed, targetPeriod.windDirection)}`
-    ],
-    tone: scoreTone(score)
-  };
+  return buildEventCardFromPeriod(targetPeriod, "Mow the lawn?", "Yard work", {
+    scoreFunction: scoreMowingPeriod,
+    verdictPlainLanguage: true,
+    detailBuilder: mowingDetail
+  });
 }
 
 function renderEventCard(card) {
@@ -423,6 +441,60 @@ function findBestPeriodForHours(periods, startHour, endHour) {
     const hour = new Date(period.startTime).getHours();
     return hour >= startHour && hour <= endHour;
   });
+}
+
+function getEventAnchorDate(periods) {
+  const firstPeriod = periods[0]?.startTime;
+  return firstPeriod ? new Date(firstPeriod) : new Date();
+}
+
+function resolveEventEyebrow(timestamp, fallbackLabel) {
+  const eventDate = new Date(timestamp);
+  const currentDate = new Date();
+
+  if (isSameCalendarDay(eventDate, currentDate)) {
+    return fallbackLabel;
+  }
+
+  if (isTomorrow(eventDate, currentDate) && !isWeekend(eventDate)) {
+    return "Tomorrow";
+  }
+
+  return formatWeekdayName(timestamp);
+}
+
+function isWeekend(date) {
+  const day = date.getDay();
+  return day === 0 || day === 6;
+}
+
+function isSameCalendarDay(left, right) {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+function isTomorrow(date, referenceDate) {
+  const tomorrow = new Date(referenceDate);
+  tomorrow.setHours(0, 0, 0, 0);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return isSameCalendarDay(date, tomorrow);
+}
+
+function formatWeekdayName(timestamp) {
+  return new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(new Date(timestamp));
+}
+
+function weekendMorningTitle(period) {
+  return formatWeekdayName(period.startTime) === "Sunday" ? "Sunday slow start" : "Saturday morning";
+}
+
+function weekendAfternoonTitle(period) {
+  return formatWeekdayName(period.startTime) === "Sunday" ? "Sunday afternoon" : "Saturday outing";
+}
+
+function weekendEveningTitle(period) {
+  return formatWeekdayName(period.startTime) === "Sunday" ? "Sunday evening" : "Saturday evening";
 }
 
 function scorePeriod(period) {
