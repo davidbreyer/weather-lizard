@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Lizard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="weather-panel">
+      <p class="eyebrow">National Weather Service</p>
+      <h1>Weather Lizard</h1>
+      <p class="intro">
+        This page uses your browser location to find the latest nearby observation from the
+        National Weather Service API.
+      </p>
+
+      <div class="actions">
+        <button id="refreshButton" type="button">Get my weather</button>
+      </div>
+
+      <p id="statusMessage" class="status-message" role="status" aria-live="polite">
+        Click the button to allow location access and load the current conditions.
+      </p>
+
+      <section id="weatherCard" class="weather-card hidden" aria-live="polite">
+        <div class="weather-card__header">
+          <div>
+            <p id="locationLabel" class="location-label">Loading location...</p>
+            <h2 id="summaryLabel">Current conditions</h2>
+          </div>
+          <p id="temperatureLabel" class="temperature-label">--</p>
+        </div>
+
+        <dl class="weather-grid">
+          <div>
+            <dt>Condition</dt>
+            <dd id="conditionValue">--</dd>
+          </div>
+          <div>
+            <dt>Wind</dt>
+            <dd id="windValue">--</dd>
+          </div>
+          <div>
+            <dt>Humidity</dt>
+            <dd id="humidityValue">--</dd>
+          </div>
+          <div>
+            <dt>Visibility</dt>
+            <dd id="visibilityValue">--</dd>
+          </div>
+          <div>
+            <dt>Station</dt>
+            <dd id="stationValue">--</dd>
+          </div>
+          <div>
+            <dt>Observed</dt>
+            <dd id="updatedValue">--</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section id="hourlyForecastSection" class="hourly-forecast hidden" aria-live="polite">
+        <div class="hourly-forecast__header">
+          <div>
+            <p class="section-kicker">Forecast</p>
+            <h2>Next 12 hours</h2>
+          </div>
+          <p class="hourly-forecast__note">Hourly forecast from the National Weather Service</p>
+        </div>
+
+        <div id="hourlyForecastList" class="hourly-forecast__list"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

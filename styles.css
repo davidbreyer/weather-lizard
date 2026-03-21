@@ -1,0 +1,246 @@
+:root {
+  color-scheme: light;
+  font-family: Arial, Helvetica, sans-serif;
+  line-height: 1.5;
+  color: #10233f;
+  background: #dbeafe;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 45%),
+    linear-gradient(180deg, #c7e7ff 0%, #eaf4ff 100%);
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.weather-panel {
+  width: min(100%, 760px);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 20px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
+  padding: 32px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.intro {
+  margin: 12px 0 0;
+  max-width: 60ch;
+  color: #334155;
+}
+
+.actions {
+  margin-top: 24px;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 14px 22px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.2);
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+  transform: none;
+}
+
+.status-message {
+  min-height: 1.5em;
+  margin: 18px 0 0;
+  color: #334155;
+}
+
+.weather-card {
+  margin-top: 24px;
+  background: #0f172a;
+  color: #f8fafc;
+  border-radius: 18px;
+  padding: 24px;
+}
+
+.weather-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.weather-card__header h2 {
+  margin: 6px 0 0;
+  font-size: 1.5rem;
+}
+
+.location-label {
+  margin: 0;
+  color: #93c5fd;
+}
+
+.temperature-label {
+  margin: 0;
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  line-height: 1;
+  font-weight: 700;
+}
+
+.weather-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 0;
+}
+
+.weather-grid div {
+  padding: 14px 16px;
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 14px;
+}
+
+.weather-grid dt {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+}
+
+.weather-grid dd {
+  margin: 8px 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.hidden {
+  display: none;
+}
+
+.hourly-forecast {
+  margin-top: 24px;
+  padding: 24px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.hourly-forecast__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.section-kicker {
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.hourly-forecast__header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.hourly-forecast__note {
+  margin: 0;
+  color: #475569;
+  text-align: right;
+}
+
+.hourly-forecast__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.hour-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: #eff6ff;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+}
+
+.hour-card__time {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.hour-card__temp {
+  margin: 10px 0 6px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.hour-card__summary {
+  margin: 0;
+  color: #334155;
+  min-height: 3em;
+}
+
+.hour-card__meta {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+@media (max-width: 640px) {
+  .weather-panel {
+    padding: 24px;
+  }
+
+  .weather-card__header {
+    flex-direction: column;
+  }
+
+  .weather-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hourly-forecast__header {
+    flex-direction: column;
+  }
+
+  .hourly-forecast__note {
+    text-align: left;
+  }
+}
