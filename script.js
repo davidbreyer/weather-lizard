@@ -381,6 +381,8 @@ function buildEventCardFromPeriod(period, title, eyebrow, options = {}) {
   return {
     eyebrow: resolveEventEyebrow(period.startTime, eyebrow),
     title,
+    summaryTime: formatHourLabel(period.startTime),
+    summaryTemperature: formatForecastTemperature(period.temperature, period.temperatureUnit),
     verdict: verdictLabel(score, verdictPlainLanguage),
     detail: detailBuilder(score, period),
     meta: [
@@ -422,17 +424,27 @@ function buildMowingCard(periods) {
 
 function renderEventCard(card) {
   return `
-    <article class="event-card event-card--${card.tone}">
-      <p class="event-card__eyebrow">${card.eyebrow}</p>
-      <h3 class="event-card__title">${card.title}</h3>
-      <p class="event-card__verdict">${card.verdict}</p>
-      <p class="event-card__detail">${card.detail}</p>
-      <p class="event-card__meta">
-        <span>${card.meta[0]}</span>
-        <span>${card.meta[1]}</span>
-        <span>${card.meta[2]}</span>
-      </p>
-    </article>
+    <details class="event-card event-card--${card.tone}">
+      <summary class="event-card__summary">
+        <div class="event-card__summary-main">
+          <p class="event-card__eyebrow">${card.eyebrow}</p>
+          <h3 class="event-card__title">${card.title}</h3>
+          <p class="event-card__summary-meta">${card.summaryTime} · ${card.verdict}</p>
+        </div>
+        <div class="event-card__summary-side">
+          <p class="event-card__temp">${card.summaryTemperature}</p>
+          <p class="event-card__toggle">More detail</p>
+        </div>
+      </summary>
+      <div class="event-card__content">
+        <p class="event-card__detail">${card.detail}</p>
+        <p class="event-card__meta">
+          <span>${card.meta[0]}</span>
+          <span>${card.meta[1]}</span>
+          <span>${card.meta[2]}</span>
+        </p>
+      </div>
+    </details>
   `;
 }
 

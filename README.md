@@ -2,7 +2,7 @@
 
 Weather Lizard is a small static JavaScript site that uses browser geolocation and the National Weather Service API to show the latest nearby observation and an hourly forecast.
 
-It includes a polished mobile-friendly interface, a top-of-page alerts section, and a day-aware event-style dashboard that swaps weekday commute cards for weekend-focused planning cards.
+It includes a polished mobile-friendly interface, a top-of-page alerts section, and a day-aware event-style dashboard with stacked expandable tiles that swap weekday commute cards for weekend-focused planning cards.
 
 ## Run locally
 
