@@ -657,7 +657,7 @@ function mowingDetail(score, period) {
 
 function formatTemperature(celsius) {
   if (typeof celsius !== "number") {
-    return "Unavailable";
+    return "--";
   }
 
   const fahrenheit = (celsius * 9) / 5 + 32;
@@ -666,7 +666,7 @@ function formatTemperature(celsius) {
 
 function formatForecastTemperature(value, unit) {
   if (typeof value !== "number") {
-    return "Unavailable";
+    return "--";
   }
 
   return `${Math.round(value)}°${unit || "F"}`;
@@ -674,7 +674,7 @@ function formatForecastTemperature(value, unit) {
 
 function formatWind(directionDegrees, metersPerSecond, gustMetersPerSecond) {
   if (typeof metersPerSecond !== "number") {
-    return "Unavailable";
+    return "--";
   }
 
   const direction = formatWindDirection(directionDegrees);
@@ -697,7 +697,7 @@ function formatWindDirection(degrees) {
 }
 
 function formatPercent(value) {
-  return typeof value === "number" ? `${Math.round(value)}%` : "Unavailable";
+  return typeof value === "number" ? `${Math.round(value)}%` : "--";
 }
 
 function formatForecastPercent(value) {
@@ -729,7 +729,7 @@ function parseWindSpeedMph(windSpeed) {
 
 function formatVisibility(meters) {
   if (typeof meters !== "number") {
-    return "Unavailable";
+    return "--";
   }
 
   const miles = meters / 1609.344;
@@ -738,7 +738,7 @@ function formatVisibility(meters) {
 
 function formatDateTime(timestamp) {
   if (!timestamp) {
-    return "Unavailable";
+    return "--";
   }
 
   return new Intl.DateTimeFormat(undefined, {
