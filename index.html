@@ -1,128 +1,81 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Weather Lizard shows current weather and the next 12 hours of forecast for your location using the National Weather Service API.">
-  <meta name="theme-color" content="#1d4ed8">
-  <meta property="og:title" content="Weather Lizard">
-  <meta property="og:description" content="Current local weather and hourly forecast powered by the National Weather Service API.">
-  <meta property="og:type" content="website">
-  <title>Weather Lizard</title>
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <main class="app-shell">
-    <section class="weather-panel">
-      <p class="eyebrow">National Weather Service</p>
-      <h1>Weather Lizard</h1>
-      <p class="intro">
-        Plan around the parts of the day that matter most. Weather Lizard uses your location to
-        turn National Weather Service data into practical forecast moments and recommendations.
-      </p>
-
-      <div class="actions">
-        <button id="refreshButton" type="button">Get my weather</button>
-      </div>
-
-      <p class="helper-text">
-        Allow location access when prompted. You can refresh at any time to pull the latest nearby conditions.
-      </p>
-
-      <div class="status-panel">
-        <p id="statusMessage" class="status-message status-message--info" role="status" aria-live="polite">
-          Click the button to allow location access and load the current conditions.
-        </p>
-        <p id="lastLoadedLabel" class="last-loaded-label">No weather data loaded yet.</p>
-      </div>
-
-      <section id="alertsSection" class="alerts-panel hidden" aria-live="polite">
-        <div class="alerts-panel__header">
-          <div>
-            <p class="section-kicker">Active alerts</p>
-            <h2>Pay attention now</h2>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Weather Lizard shows today's local weather in morning, afternoon, evening, and overnight blocks using the National Weather Service API."
+    />
+    <meta name="theme-color" content="#1769e0" />
+    <meta property="og:title" content="Weather Lizard" />
+    <meta
+      property="og:description"
+      content="A four-part local day forecast powered by the National Weather Service API."
+    />
+    <meta property="og:type" content="website" />
+    <title>Weather Lizard</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="app-shell" aria-label="Weather Lizard dashboard">
+        <header class="topbar">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>Weather Lizard</span>
           </div>
-          <p class="alerts-panel__note">Warnings, watches, advisories, and statements near your location.</p>
-        </div>
 
-        <div id="alertsList" class="alerts-list"></div>
+          <div class="place-row">
+            <div class="place">
+              <span aria-hidden="true" data-icon="pin"></span>
+              <span id="locationLabel">Your location</span>
+            </div>
+            <div id="dateLabel" class="date">Today</div>
+          </div>
+
+          <div class="actions">
+            <button id="refreshButton" class="location-button" type="button">
+              <span aria-hidden="true" data-icon="target"></span>
+              <span>Get my weather</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="status-strip" aria-live="polite">
+          <p id="statusMessage" class="status-message status-message--info">
+            Click the button to allow location access and load your local forecast.
+          </p>
+          <p id="lastLoadedLabel" class="last-loaded-label">No weather data loaded yet.</p>
+        </section>
+
+        <section id="alertsSection" class="alerts-banner hidden" aria-live="polite">
+          <div>
+            <strong id="alertsTitle">Active alerts</strong>
+            <span id="alertsSummary"></span>
+          </div>
+          <button id="alertsToggle" class="text-button" type="button" aria-expanded="false">
+            Show details
+          </button>
+          <div id="alertsList" class="alerts-list" hidden></div>
+        </section>
+
+        <section id="forecastGrid" class="forecast-grid" aria-live="polite"></section>
+
+        <section id="bottomStrip" class="bottom-strip" aria-label="Current weather details"></section>
+
+        <footer class="site-footer">
+          <span>Weather data from the</span>
+          <a
+            href="https://www.weather.gov/documentation/services-web-api"
+            target="_blank"
+            rel="noreferrer"
+          >National Weather Service API</a>.
+        </footer>
       </section>
+    </main>
 
-      <section id="eventForecastSection" class="event-forecast hidden" aria-live="polite">
-        <div class="event-forecast__header">
-          <div>
-            <p class="section-kicker">Plan your day</p>
-            <h2>Forecast by moment</h2>
-          </div>
-          <p id="eventForecastNote" class="event-forecast__note">Practical guidance built from the next 12 hours of forecast data.</p>
-        </div>
-
-        <div id="eventForecastList" class="event-forecast__list"></div>
-      </section>
-
-      <section id="weatherCard" class="weather-card hidden" aria-live="polite">
-        <div class="weather-card__header">
-          <div>
-            <p id="locationLabel" class="location-label">Loading location...</p>
-            <h2 id="summaryLabel">Right now</h2>
-          </div>
-          <p id="temperatureLabel" class="temperature-label">--</p>
-        </div>
-
-        <dl class="weather-grid">
-          <div>
-            <dt>Condition</dt>
-            <dd id="conditionValue">--</dd>
-          </div>
-          <div>
-            <dt>Wind</dt>
-            <dd id="windValue">--</dd>
-          </div>
-          <div>
-            <dt>Humidity</dt>
-            <dd id="humidityValue">--</dd>
-          </div>
-          <div>
-            <dt>Visibility</dt>
-            <dd id="visibilityValue">--</dd>
-          </div>
-          <div>
-            <dt>Station</dt>
-            <dd id="stationValue">--</dd>
-          </div>
-          <div>
-            <dt>Observed</dt>
-            <dd id="updatedValue">--</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section id="hourlyForecastSection" class="hourly-forecast hidden" aria-live="polite">
-        <div class="hourly-forecast__header">
-          <div>
-            <p class="section-kicker">Forecast</p>
-            <h2>Next 12 hours</h2>
-          </div>
-          <p class="hourly-forecast__note">Hourly forecast from the National Weather Service</p>
-        </div>
-
-        <div id="hourlyForecastList" class="hourly-forecast__list"></div>
-      </section>
-
-      <footer class="site-footer">
-        <p>
-          Weather data from the
-          <a href="https://www.weather.gov/documentation/services-web-api" target="_blank" rel="noreferrer">National Weather Service API</a>.
-        </p>
-        <p>
-          Source code on
-          <a href="https://github.com/davidbreyer/weather-lizard" target="_blank" rel="noreferrer">GitHub</a>.
-        </p>
-      </footer>
-    </section>
-  </main>
-
-  <script src="script.js"></script>
-</body>
+    <script src="script.js"></script>
+  </body>
 </html>

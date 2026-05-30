@@ -2,60 +2,57 @@ const elements = {
   refreshButton: document.querySelector("#refreshButton"),
   statusMessage: document.querySelector("#statusMessage"),
   lastLoadedLabel: document.querySelector("#lastLoadedLabel"),
-  alertsSection: document.querySelector("#alertsSection"),
-  alertsList: document.querySelector("#alertsList"),
-  eventForecastSection: document.querySelector("#eventForecastSection"),
-  eventForecastList: document.querySelector("#eventForecastList"),
-  eventForecastNote: document.querySelector("#eventForecastNote"),
-  weatherCard: document.querySelector("#weatherCard"),
-  hourlyForecastSection: document.querySelector("#hourlyForecastSection"),
-  hourlyForecastList: document.querySelector("#hourlyForecastList"),
   locationLabel: document.querySelector("#locationLabel"),
-  summaryLabel: document.querySelector("#summaryLabel"),
-  temperatureLabel: document.querySelector("#temperatureLabel"),
-  conditionValue: document.querySelector("#conditionValue"),
-  windValue: document.querySelector("#windValue"),
-  humidityValue: document.querySelector("#humidityValue"),
-  visibilityValue: document.querySelector("#visibilityValue"),
-  stationValue: document.querySelector("#stationValue"),
-  updatedValue: document.querySelector("#updatedValue")
+  dateLabel: document.querySelector("#dateLabel"),
+  alertsSection: document.querySelector("#alertsSection"),
+  alertsTitle: document.querySelector("#alertsTitle"),
+  alertsSummary: document.querySelector("#alertsSummary"),
+  alertsToggle: document.querySelector("#alertsToggle"),
+  alertsList: document.querySelector("#alertsList"),
+  forecastGrid: document.querySelector("#forecastGrid"),
+  bottomStrip: document.querySelector("#bottomStrip")
 };
 
 const nwsHeaders = {
   Accept: "application/geo+json"
 };
 
+const dayParts = [
+  { key: "morning", title: "Morning", label: "6 AM - 12 PM", start: 6, end: 12, midpoint: 9 },
+  { key: "afternoon", title: "Afternoon", label: "12 PM - 6 PM", start: 12, end: 18, midpoint: 15 },
+  { key: "evening", title: "Evening", label: "6 PM - 12 AM", start: 18, end: 24, midpoint: 20 },
+  { key: "overnight", title: "Overnight", label: "12 AM - 6 AM", start: 0, end: 6, midpoint: 3 }
+];
+
 let hasLoadedWeather = false;
 
 elements.refreshButton.addEventListener("click", loadWeather);
+elements.alertsToggle.addEventListener("click", toggleAlerts);
 
 async function loadWeather() {
   setLoadingState(true);
-  setStatus(hasLoadedWeather ? "Refreshing your local weather..." : "Getting your location...");
-
-  if (!hasLoadedWeather) {
-    showLoadingSkeletons();
-  }
+  setStatus(hasLoadedWeather ? "Refreshing your local Weather Lizard forecast..." : "Getting your location...");
+  renderForecast(buildLoadingDayParts());
 
   try {
     const position = await getCurrentPosition();
     const latitude = position.coords.latitude;
     const longitude = position.coords.longitude;
 
-    setStatus("Finding the nearest weather station...");
+    setStatus("Finding your National Weather Service forecast office...");
 
     const pointData = await fetchJson(
       `https://api.weather.gov/points/${latitude.toFixed(4)},${longitude.toFixed(4)}`
     );
 
     const pointProperties = pointData.properties;
-    const nearbyLocation = formatNearbyLocation(pointData.properties.relativeLocation?.properties);
+    const nearbyLocation = formatNearbyLocation(pointProperties.relativeLocation?.properties);
 
     if (!pointProperties.forecastHourly) {
       throw new Error("No hourly forecast endpoint was returned by the National Weather Service.");
     }
 
-    setStatus("Loading alerts, current conditions, and hourly forecast...");
+    setStatus("Loading hourly forecast, current conditions, and alerts...");
 
     const [stationUrl, hourlyForecast, alertsData] = await Promise.all([
       getNearestStationUrl(pointProperties.observationStations),
@@ -64,29 +61,218 @@ async function loadWeather() {
     ]);
 
     const observation = await fetchJson(`${stationUrl}/observations/latest`);
+    const context = buildWeatherContext(hourlyForecast, observation, nearbyLocation, stationUrl);
+
+    elements.locationLabel.textContent = nearbyLocation;
+    elements.dateLabel.textContent = "Today";
+    renderForecast(context.dayPartCards);
+    renderBottom(context.bottomStats);
     renderAlerts(alertsData);
-    renderEventForecast(hourlyForecast);
-    renderWeather(observation, nearbyLocation, stationUrl);
-    renderHourlyForecast(hourlyForecast);
+
     hasLoadedWeather = true;
     setLastLoaded(new Date());
-    setStatus("Alerts, daily moments, current conditions, and hourly forecast are loaded.", "success");
+    setStatus("Your four-part local forecast is loaded.", "success");
   } catch (error) {
     if (!hasLoadedWeather) {
-      clearWeatherDisplay();
-    } else {
-      removeLoadingClasses();
+      renderForecast(buildEmptyDayParts());
+      clearAlerts();
     }
 
-    setStatus(hasLoadedWeather ? `${error.message} Showing your last loaded weather data.` : error.message, "error");
+    setStatus(hasLoadedWeather ? `${error.message} Showing your last loaded forecast.` : error.message, "error");
   } finally {
     setLoadingState(false);
   }
 }
 
+function buildWeatherContext(hourlyForecastData, observationData, nearbyLocation, stationUrl) {
+  const periods = hourlyForecastData.properties?.periods ?? [];
+
+  if (periods.length === 0) {
+    throw new Error("No hourly forecast data was returned by the National Weather Service.");
+  }
+
+  const observation = observationData.properties ?? {};
+  const anchorDate = getForecastAnchorDate(periods);
+  const stationCode = stationUrl.split("/").pop() || "NWS";
+  const currentHumidity = observation.relativeHumidity?.value;
+
+  return {
+    dayPartCards: dayParts.map((part) => buildDayPartCard(part, periods, anchorDate, currentHumidity)),
+    bottomStats: [
+      ["target", "Location", nearbyLocation],
+      ["drop", "Humidity", formatPercent(currentHumidity)],
+      ["pressure", "Pressure", formatPressure(observation.barometricPressure?.value)],
+      ["visibility", "Visibility", formatVisibility(observation.visibility?.value)],
+      ["wind", "Station", stationCode]
+    ]
+  };
+}
+
+function buildDayPartCard(part, periods, anchorDate, fallbackHumidity) {
+  const candidates = periods.filter((period) => isPeriodInDayPart(period, part, anchorDate));
+  const fallback = findNextPeriodForPart(periods, part) || periods[0];
+  const representative = chooseRepresentativePeriod(candidates, part) || fallback;
+  const source = candidates.length > 0 ? candidates : [representative];
+  const temps = source.map((period) => period.temperature).filter((value) => typeof value === "number");
+  const precipValues = source
+    .map((period) => period.probabilityOfPrecipitation?.value)
+    .filter((value) => typeof value === "number");
+  const humidityValues = source
+    .map((period) => period.relativeHumidity?.value)
+    .filter((value) => typeof value === "number");
+
+  return {
+    ...part,
+    temperature: formatForecastTemperature(
+      temps.length > 0 ? Math.round(average(temps)) : representative.temperature,
+      representative.temperatureUnit
+    ),
+    condition: representative.shortForecast || "Forecast unavailable",
+    note: buildDayPartNote(part, representative, precipValues),
+    icon: iconForForecast(representative.shortForecast, part.key),
+    stats: [
+      ["drop", "Rain Chance", formatForecastPercent(maxOrNull(precipValues))],
+      ["wind", "Wind", formatForecastWind(representative.windSpeed, representative.windDirection)],
+      ["drop", "Humidity", formatPercent(maxOrNull(humidityValues) ?? fallbackHumidity)]
+    ]
+  };
+}
+
+function getForecastAnchorDate(periods) {
+  const now = new Date();
+  const todayPeriods = periods.filter((period) => isSameCalendarDay(new Date(period.startTime), now));
+
+  if (todayPeriods.length > 0) {
+    return now;
+  }
+
+  return new Date(periods[0].startTime);
+}
+
+function isPeriodInDayPart(period, part, anchorDate) {
+  const date = new Date(period.startTime);
+
+  if (!isSameCalendarDay(date, anchorDate)) {
+    return false;
+  }
+
+  const hour = date.getHours();
+  return hour >= part.start && hour < part.end;
+}
+
+function chooseRepresentativePeriod(periods, part) {
+  if (periods.length === 0) {
+    return null;
+  }
+
+  return periods.reduce((best, period) => {
+    const bestDistance = Math.abs(new Date(best.startTime).getHours() - part.midpoint);
+    const periodDistance = Math.abs(new Date(period.startTime).getHours() - part.midpoint);
+    return periodDistance < bestDistance ? period : best;
+  }, periods[0]);
+}
+
+function findNextPeriodForPart(periods, part) {
+  return periods.find((period) => {
+    const hour = new Date(period.startTime).getHours();
+    return hour >= part.start && hour < part.end;
+  });
+}
+
+function buildDayPartNote(part, period, precipValues) {
+  const forecast = period.shortForecast || "Forecast unavailable";
+  const rain = maxOrNull(precipValues);
+  const rainPhrase = typeof rain === "number" && rain >= 30
+    ? ` Keep an eye on a ${Math.round(rain)}% precipitation chance.`
+    : "";
+
+  const partPhrases = {
+    morning: "A practical look at how the day starts.",
+    afternoon: "The warmest and brightest part of the day.",
+    evening: "A quick read on plans after work.",
+    overnight: "What to expect while the night settles in."
+  };
+
+  return `${partPhrases[part.key]} ${forecast}.${rainPhrase}`.replace(/\.\./g, ".").trim();
+}
+
+function renderForecast(cards) {
+  elements.forecastGrid.innerHTML = cards.map((card) => `
+    <article class="quad ${card.key}">
+      <div class="quad-content">
+        <div class="time">
+          <h2>${escapeHtml(card.title)}</h2>
+          <p>${escapeHtml(card.label)}</p>
+        </div>
+        <div class="temperature">
+          <div class="temp">${escapeHtml(card.temperature)}</div>
+          <div class="condition">${escapeHtml(card.condition)}</div>
+          <p class="note">${escapeHtml(card.note)}</p>
+        </div>
+        <div class="weather-art">${weatherIcon(card.icon)}</div>
+        <div class="stats">${makeStats(card.stats)}</div>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderBottom(stats) {
+  elements.bottomStrip.innerHTML = stats.map(([icon, label, value]) => `
+    <div class="mini-stat">
+      <span aria-hidden="true">${icons[icon] || ""}</span>
+      <div>
+        <span class="mini-label">${escapeHtml(label)}</span>
+        <span class="mini-value">${escapeHtml(value)}</span>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderAlerts(alertsData) {
+  const alerts = (alertsData.features || [])
+    .map((feature) => feature.properties)
+    .filter(Boolean)
+    .slice(0, 3);
+
+  if (alerts.length === 0) {
+    clearAlerts();
+    return;
+  }
+
+  elements.alertsTitle.textContent = alerts.length === 1 ? "1 active alert" : `${alerts.length} active alerts`;
+  elements.alertsSummary.textContent = alerts.map((alert) => alert.event).filter(Boolean).join(" · ");
+  elements.alertsList.innerHTML = alerts.map((alert) => `
+    <article class="alert-card">
+      <h3>${escapeHtml(alert.event || "Weather alert")}</h3>
+      <p>${escapeHtml(alert.areaDesc || "Area unavailable")}</p>
+      <p>${escapeHtml(summarizeAlert(alert.headline || alert.description || "Alert details unavailable."))}</p>
+    </article>
+  `).join("");
+  elements.alertsSection.classList.remove("hidden");
+}
+
+function clearAlerts() {
+  elements.alertsSection.classList.add("hidden");
+  elements.alertsList.innerHTML = "";
+  elements.alertsList.hidden = true;
+  elements.alertsToggle.setAttribute("aria-expanded", "false");
+  elements.alertsToggle.textContent = "Show details";
+}
+
+function toggleAlerts() {
+  const isExpanded = elements.alertsToggle.getAttribute("aria-expanded") === "true";
+  elements.alertsToggle.setAttribute("aria-expanded", String(!isExpanded));
+  elements.alertsToggle.textContent = isExpanded ? "Show details" : "Hide details";
+  elements.alertsList.hidden = isExpanded;
+}
+
 function setLoadingState(isLoading) {
   elements.refreshButton.disabled = isLoading;
-  elements.refreshButton.textContent = isLoading ? "Loading..." : hasLoadedWeather ? "Refresh weather" : "Get my weather";
+  elements.refreshButton.querySelector("span:last-child").textContent = isLoading
+    ? "Loading..."
+    : hasLoadedWeather
+      ? "Refresh weather"
+      : "Get my weather";
 }
 
 function setStatus(message, type = "info") {
@@ -99,71 +285,6 @@ function setLastLoaded(date) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(date)}.`;
-}
-
-function showLoadingSkeletons() {
-  elements.alertsSection.classList.remove("hidden");
-  elements.alertsSection.classList.add("alerts-panel--loading");
-  elements.eventForecastSection.classList.remove("hidden");
-  elements.eventForecastSection.classList.add("event-forecast--loading");
-  elements.weatherCard.classList.remove("hidden");
-  elements.weatherCard.classList.add("weather-card--loading");
-  elements.hourlyForecastSection.classList.remove("hidden");
-  elements.hourlyForecastSection.classList.add("hourly-forecast--loading");
-
-  elements.alertsList.innerHTML = Array.from({ length: 2 }, () => `
-    <article class="alert-card alert-card--placeholder" aria-hidden="true">
-      <h3 class="alert-card__title">Loading alert</h3>
-      <p class="alert-card__chips">Loading</p>
-      <p class="alert-card__meta">Loading</p>
-      <p class="alert-card__summary">Loading alert details</p>
-      <p class="alert-card__instruction">Loading recommended action</p>
-    </article>
-  `).join("");
-  elements.eventForecastList.innerHTML = Array.from({ length: 6 }, () => `
-    <article class="event-card event-card--placeholder" aria-hidden="true">
-      <p class="event-card__eyebrow">Loading</p>
-      <p class="event-card__title">Loading</p>
-      <p class="event-card__verdict">Loading</p>
-      <p class="event-card__detail">Loading the best forecast moments for your day.</p>
-      <p class="event-card__meta">Loading details</p>
-    </article>
-  `).join("");
-  elements.locationLabel.textContent = "Loading nearby location";
-  elements.summaryLabel.textContent = "Loading current conditions";
-  elements.temperatureLabel.textContent = "--";
-  elements.conditionValue.textContent = "Loading";
-  elements.windValue.textContent = "Loading";
-  elements.humidityValue.textContent = "Loading";
-  elements.visibilityValue.textContent = "Loading";
-  elements.stationValue.textContent = "Loading";
-  elements.updatedValue.textContent = "Loading";
-  elements.hourlyForecastList.innerHTML = Array.from({ length: 6 }, () => `
-    <article class="hour-card hour-card--placeholder" aria-hidden="true">
-      <p class="hour-card__time">Loading</p>
-      <p class="hour-card__temp">--</p>
-      <p class="hour-card__summary">Loading hourly forecast</p>
-      <p class="hour-card__meta"><span>Loading</span><span>Loading</span></p>
-    </article>
-  `).join("");
-}
-
-function clearWeatherDisplay() {
-  elements.alertsSection.classList.add("hidden");
-  elements.eventForecastSection.classList.add("hidden");
-  elements.weatherCard.classList.add("hidden");
-  elements.hourlyForecastSection.classList.add("hidden");
-  removeLoadingClasses();
-  elements.alertsList.innerHTML = "";
-  elements.eventForecastList.innerHTML = "";
-  elements.hourlyForecastList.innerHTML = "";
-}
-
-function removeLoadingClasses() {
-  elements.alertsSection.classList.remove("alerts-panel--loading");
-  elements.eventForecastSection.classList.remove("event-forecast--loading");
-  elements.weatherCard.classList.remove("weather-card--loading");
-  elements.hourlyForecastSection.classList.remove("hourly-forecast--loading");
 }
 
 function getCurrentPosition() {
@@ -202,9 +323,7 @@ async function fetchJson(url) {
   let response;
 
   try {
-    response = await fetch(url, {
-      headers: nwsHeaders
-    });
+    response = await fetch(url, { headers: nwsHeaders });
   } catch (error) {
     throw new Error("The weather service could not be reached. Please check your connection and try again.");
   }
@@ -228,106 +347,34 @@ async function fetchJson(url) {
   return response.json();
 }
 
-function renderWeather(observationData, nearbyLocation, stationUrl) {
-  const properties = observationData.properties;
-  const stationCode = stationUrl.split("/").pop() || "Unknown";
-  const summary = properties.textDescription || "Current conditions";
-  const temperatureC = properties.temperature?.value;
-  const relativeHumidity = properties.relativeHumidity?.value;
-  const visibilityM = properties.visibility?.value;
-
-  elements.locationLabel.textContent = nearbyLocation;
-  elements.summaryLabel.textContent = summary;
-  elements.temperatureLabel.textContent = formatTemperature(temperatureC);
-  elements.conditionValue.textContent = summary;
-  elements.windValue.textContent = formatWind(
-    properties.windDirection?.value,
-    properties.windSpeed?.value,
-    properties.windGust?.value
-  );
-  elements.humidityValue.textContent = formatPercent(relativeHumidity);
-  elements.visibilityValue.textContent = formatVisibility(visibilityM);
-  elements.stationValue.textContent = stationCode;
-  elements.updatedValue.textContent = formatDateTime(properties.timestamp);
-  removeLoadingClasses();
-  elements.weatherCard.classList.remove("hidden");
+function buildEmptyDayParts() {
+  return dayParts.map((part) => ({
+    ...part,
+    temperature: "--",
+    condition: "Waiting for location",
+    note: "Allow location access to load the National Weather Service forecast for this part of your day.",
+    icon: part.key === "overnight" ? "moon" : part.key === "evening" ? "moon-cloud" : "partly",
+    stats: [
+      ["drop", "Rain Chance", "--"],
+      ["wind", "Wind", "--"],
+      ["drop", "Humidity", "--"]
+    ]
+  }));
 }
 
-function renderAlerts(alertsData) {
-  const alerts = (alertsData.features || [])
-    .map((feature) => feature.properties)
-    .filter(Boolean)
-    .slice(0, 3);
-
-  if (alerts.length === 0) {
-    elements.alertsSection.classList.add("hidden");
-    elements.alertsList.innerHTML = "";
-    elements.alertsSection.classList.remove("alerts-panel--loading");
-    return;
-  }
-
-  elements.alertsList.innerHTML = alerts.map((alert) => `
-    <article class="alert-card alert-card--${alertSeverityTone(alert.severity)}">
-      <h3 class="alert-card__title">${escapeHtml(alert.event || "Weather alert")}</h3>
-      <div class="alert-card__chips">
-        <span class="alert-chip alert-chip--severity-${alertSeverityTone(alert.severity)}">${escapeHtml(alert.severity || "Unknown severity")}</span>
-        <span class="alert-chip">${escapeHtml(alert.urgency || "Unknown urgency")}</span>
-        <span class="alert-chip">${escapeHtml(alert.certainty || "Unknown certainty")}</span>
-      </div>
-      <p class="alert-card__meta">
-        ${escapeHtml(alert.areaDesc || "Area unavailable")}<br>
-        ${formatAlertTimeRange(alert.effective, alert.expires)}
-      </p>
-      <p class="alert-card__summary">${escapeHtml(summarizeAlert(alert.headline || alert.description || "Alert details unavailable."))}</p>
-      ${alert.instruction ? `<p class="alert-card__instruction">${escapeHtml(alert.instruction)}</p>` : ""}
-    </article>
-  `).join("");
-
-  elements.alertsSection.classList.remove("alerts-panel--loading");
-  elements.alertsSection.classList.remove("hidden");
-}
-
-function renderEventForecast(hourlyForecastData) {
-  const periods = hourlyForecastData.properties?.periods ?? [];
-
-  if (periods.length === 0) {
-    throw new Error("No hourly forecast data was returned by the National Weather Service.");
-  }
-
-  const anchorDate = getEventAnchorDate(periods);
-  const weekend = isWeekend(anchorDate);
-  const eventCards = weekend ? buildWeekendEventCards(periods) : buildWeekdayEventCards(periods);
-
-  elements.eventForecastNote.textContent = weekend
-    ? "Weekend-friendly guidance built from the upcoming hourly forecast."
-    : "Weekday guidance built around commute windows and the rest of your day.";
-
-  elements.eventForecastList.innerHTML = eventCards.map(renderEventCard).join("");
-  elements.eventForecastSection.classList.remove("event-forecast--loading");
-  elements.eventForecastSection.classList.remove("hidden");
-}
-
-function renderHourlyForecast(hourlyForecastData) {
-  const periods = hourlyForecastData.properties?.periods?.slice(0, 12);
-
-  if (!periods || periods.length === 0) {
-    throw new Error("No hourly forecast data was returned by the National Weather Service.");
-  }
-
-  elements.hourlyForecastList.innerHTML = periods.map((period) => `
-    <article class="hour-card">
-      <p class="hour-card__time">${formatHourLabel(period.startTime)}</p>
-      <p class="hour-card__temp">${formatForecastTemperature(period.temperature, period.temperatureUnit)}</p>
-      <p class="hour-card__summary">${period.shortForecast || "Forecast unavailable"}</p>
-      <p class="hour-card__meta">
-        <span>Rain chance: ${formatForecastPercent(period.probabilityOfPrecipitation?.value)}</span>
-        <span>Wind: ${formatForecastWind(period.windSpeed, period.windDirection)}</span>
-      </p>
-    </article>
-  `).join("");
-
-  elements.hourlyForecastSection.classList.remove("hourly-forecast--loading");
-  elements.hourlyForecastSection.classList.remove("hidden");
+function buildLoadingDayParts() {
+  return dayParts.map((part) => ({
+    ...part,
+    temperature: "--",
+    condition: "Loading",
+    note: "Pulling fresh National Weather Service data for your location.",
+    icon: part.key === "overnight" ? "moon" : part.key === "afternoon" ? "sun" : "partly",
+    stats: [
+      ["drop", "Rain Chance", "--"],
+      ["wind", "Wind", "--"],
+      ["drop", "Humidity", "--"]
+    ]
+  }));
 }
 
 function formatNearbyLocation(location) {
@@ -340,364 +387,12 @@ function formatNearbyLocation(location) {
   return `${city}${state}`;
 }
 
-function buildTimedEventCard(title, eyebrow, periods, startHour, endHour) {
-  const period = findBestPeriodForHours(periods, startHour, endHour) || periods[0];
-  return buildEventCardFromPeriod(period, title, eyebrow);
-}
-
-function buildWeekdayEventCards(periods) {
-  return [
-    buildTimedEventCard("Morning commute", "Today", periods, 6, 9),
-    buildTimedEventCard("Lunch", "Midday", periods, 11, 13),
-    buildTimedEventCard("Afternoon commute", "Later today", periods, 16, 18),
-    buildTimedEventCard("Evening & sunset", "Tonight", periods, 18, 21),
-    buildPatioCard(periods),
-    buildMowingCard(periods)
-  ];
-}
-
-function buildWeekendEventCards(periods) {
-  const morningPeriod = findBestPeriodForHours(periods, 8, 10) || periods[0];
-  const brunchPeriod = findBestPeriodForHours(periods, 10, 13) || periods[0];
-  const afternoonPeriod = findBestPeriodForHours(periods, 13, 17) || periods[0];
-  const eveningPeriod = findBestPeriodForHours(periods, 18, 21) || periods[0];
-
-  return [
-    buildEventCardFromPeriod(morningPeriod, weekendMorningTitle(morningPeriod), formatWeekdayName(morningPeriod.startTime)),
-    buildEventCardFromPeriod(brunchPeriod, "Brunch", formatWeekdayName(brunchPeriod.startTime)),
-    buildEventCardFromPeriod(afternoonPeriod, weekendAfternoonTitle(afternoonPeriod), formatWeekdayName(afternoonPeriod.startTime)),
-    buildEventCardFromPeriod(eveningPeriod, weekendEveningTitle(eveningPeriod), formatWeekdayName(eveningPeriod.startTime)),
-    buildPatioCard(periods),
-    buildMowingCard(periods)
-  ];
-}
-
-function buildEventCardFromPeriod(period, title, eyebrow, options = {}) {
-  const scoreFunction = options.scoreFunction || scorePeriod;
-  const verdictPlainLanguage = options.verdictPlainLanguage || false;
-  const detailBuilder = options.detailBuilder || ((_, targetPeriod) => buildTimedEventDetail(targetPeriod));
-  const score = scoreFunction(period);
-
-  return {
-    eyebrow: resolveEventEyebrow(period.startTime, eyebrow),
-    title,
-    summaryTime: formatHourLabel(period.startTime),
-    summaryTemperature: formatForecastTemperature(period.temperature, period.temperatureUnit),
-    verdict: verdictLabel(score, verdictPlainLanguage),
-    detail: detailBuilder(score, period),
-    meta: [
-      `${formatHourLabel(period.startTime)} · ${formatForecastTemperature(period.temperature, period.temperatureUnit)}`,
-      `Rain chance: ${formatForecastPercent(period.probabilityOfPrecipitation?.value)}`,
-      `Wind: ${formatForecastWind(period.windSpeed, period.windDirection)}`
-    ],
-    tone: scoreTone(score)
-  };
-}
-
-function buildPatioCard(periods) {
-  const candidatePeriods = periods.filter((period) => {
-    const hour = new Date(period.startTime).getHours();
-    return hour >= 16 && hour <= 21;
-  });
-  const targetPeriod = bestOutdoorPeriod(candidatePeriods.length > 0 ? candidatePeriods : periods.slice(0, 6));
-
-  return buildEventCardFromPeriod(targetPeriod, "Patio weather", "Outdoor", {
-    scoreFunction: scoreOutdoorPeriod,
-    verdictPlainLanguage: true,
-    detailBuilder: patioDetail
-  });
-}
-
-function buildMowingCard(periods) {
-  const candidatePeriods = periods.filter((period) => {
-    const hour = new Date(period.startTime).getHours();
-    return hour >= 9 && hour <= 18;
-  });
-  const targetPeriod = bestOutdoorPeriod(candidatePeriods.length > 0 ? candidatePeriods : periods.slice(0, 8));
-
-  return buildEventCardFromPeriod(targetPeriod, "Mow the lawn?", "Yard work", {
-    scoreFunction: scoreMowingPeriod,
-    verdictPlainLanguage: true,
-    detailBuilder: mowingDetail
-  });
-}
-
-function renderEventCard(card) {
-  return `
-    <details class="event-card event-card--${card.tone}">
-      <summary class="event-card__summary">
-        <div class="event-card__summary-main">
-          <p class="event-card__eyebrow">${card.eyebrow}</p>
-          <h3 class="event-card__title">${card.title}</h3>
-          <p class="event-card__summary-meta">${card.summaryTime} · ${card.verdict}</p>
-        </div>
-        <div class="event-card__summary-side">
-          <p class="event-card__temp">${card.summaryTemperature}</p>
-          <p class="event-card__toggle">More detail</p>
-        </div>
-      </summary>
-      <div class="event-card__content">
-        <p class="event-card__detail">${card.detail}</p>
-        <p class="event-card__meta">
-          <span>${card.meta[0]}</span>
-          <span>${card.meta[1]}</span>
-          <span>${card.meta[2]}</span>
-        </p>
-      </div>
-    </details>
-  `;
-}
-
-function findBestPeriodForHours(periods, startHour, endHour) {
-  return periods.find((period) => {
-    const hour = new Date(period.startTime).getHours();
-    return hour >= startHour && hour <= endHour;
-  });
-}
-
-function getEventAnchorDate(periods) {
-  const firstPeriod = periods[0]?.startTime;
-  return firstPeriod ? new Date(firstPeriod) : new Date();
-}
-
-function resolveEventEyebrow(timestamp, fallbackLabel) {
-  const eventDate = new Date(timestamp);
-  const currentDate = new Date();
-
-  if (isSameCalendarDay(eventDate, currentDate)) {
-    return fallbackLabel;
-  }
-
-  if (isTomorrow(eventDate, currentDate) && !isWeekend(eventDate)) {
-    return "Tomorrow";
-  }
-
-  return formatWeekdayName(timestamp);
-}
-
-function isWeekend(date) {
-  const day = date.getDay();
-  return day === 0 || day === 6;
-}
-
-function isSameCalendarDay(left, right) {
-  return left.getFullYear() === right.getFullYear()
-    && left.getMonth() === right.getMonth()
-    && left.getDate() === right.getDate();
-}
-
-function isTomorrow(date, referenceDate) {
-  const tomorrow = new Date(referenceDate);
-  tomorrow.setHours(0, 0, 0, 0);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return isSameCalendarDay(date, tomorrow);
-}
-
-function formatWeekdayName(timestamp) {
-  return new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(new Date(timestamp));
-}
-
-function weekendMorningTitle(period) {
-  return formatWeekdayName(period.startTime) === "Sunday" ? "Sunday slow start" : "Saturday morning";
-}
-
-function weekendAfternoonTitle(period) {
-  return formatWeekdayName(period.startTime) === "Sunday" ? "Sunday afternoon" : "Saturday outing";
-}
-
-function weekendEveningTitle(period) {
-  return formatWeekdayName(period.startTime) === "Sunday" ? "Sunday evening" : "Saturday evening";
-}
-
-function scorePeriod(period) {
-  let score = 2;
-  const precipitation = period.probabilityOfPrecipitation?.value ?? 0;
-  const temperature = typeof period.temperature === "number" ? period.temperature : null;
-  const windMph = parseWindSpeedMph(period.windSpeed);
-  const forecastText = `${period.shortForecast || ""} ${period.detailedForecast || ""}`.toLowerCase();
-
-  if (precipitation >= 60 || /thunder|storm|snow|ice|freezing/.test(forecastText)) {
-    score -= 2;
-  } else if (precipitation >= 30) {
-    score -= 1;
-  }
-
-  if (windMph >= 22) {
-    score -= 1;
-  }
-
-  if (temperature !== null && (temperature <= 28 || temperature >= 95)) {
-    score -= 1;
-  } else if (temperature !== null && (temperature <= 40 || temperature >= 88)) {
-    score -= 0.5;
-  }
-
-  return Math.max(0, Math.min(3, score));
-}
-
-function scoreOutdoorPeriod(period) {
-  let score = 3;
-  const precipitation = period.probabilityOfPrecipitation?.value ?? 0;
-  const temperature = typeof period.temperature === "number" ? period.temperature : null;
-  const windMph = parseWindSpeedMph(period.windSpeed);
-
-  if (precipitation >= 50) {
-    score -= 2;
-  } else if (precipitation >= 25) {
-    score -= 1;
-  }
-
-  if (windMph >= 18) {
-    score -= 1;
-  } else if (windMph >= 12) {
-    score -= 0.5;
-  }
-
-  if (temperature !== null && (temperature < 58 || temperature > 90)) {
-    score -= 1;
-  } else if (temperature !== null && (temperature < 65 || temperature > 84)) {
-    score -= 0.5;
-  }
-
-  return Math.max(0, Math.min(3, score));
-}
-
-function scoreMowingPeriod(period) {
-  let score = 3;
-  const precipitation = period.probabilityOfPrecipitation?.value ?? 0;
-  const temperature = typeof period.temperature === "number" ? period.temperature : null;
-  const windMph = parseWindSpeedMph(period.windSpeed);
-
-  if (precipitation >= 40) {
-    score -= 2;
-  } else if (precipitation >= 20) {
-    score -= 1;
-  }
-
-  if (windMph >= 20) {
-    score -= 1;
-  } else if (windMph >= 14) {
-    score -= 0.5;
-  }
-
-  if (temperature !== null && (temperature < 45 || temperature > 92)) {
-    score -= 1;
-  } else if (temperature !== null && (temperature < 55 || temperature > 85)) {
-    score -= 0.5;
-  }
-
-  return Math.max(0, Math.min(3, score));
-}
-
-function bestOutdoorPeriod(periods) {
-  return periods.reduce((best, period) => {
-    if (!best) {
-      return period;
-    }
-
-    return scoreOutdoorPeriod(period) > scoreOutdoorPeriod(best) ? period : best;
-  }, null) || periods[0];
-}
-
-function scoreTone(score) {
-  if (score >= 2.5) {
-    return "good";
-  }
-
-  if (score >= 1.25) {
-    return "mixed";
-  }
-
-  return "rough";
-}
-
-function verdictLabel(score, plainLanguage) {
-  if (score >= 2.5) {
-    return plainLanguage ? "Looks good" : "Good to go";
-  }
-
-  if (score >= 1.25) {
-    return plainLanguage ? "Maybe" : "Plan ahead";
-  }
-
-  return plainLanguage ? "Probably skip" : "Rough weather";
-}
-
-function buildTimedEventDetail(period) {
-  const precipitation = period.probabilityOfPrecipitation?.value;
-  const wind = formatForecastWind(period.windSpeed, period.windDirection);
-  const summary = period.shortForecast || "Forecast unavailable";
-
-  return `${summary}${precipitation ? ` with a ${Math.round(precipitation)}% chance of rain` : ""}. ${wind !== "N/A" ? `Winds ${wind.toLowerCase()}.` : ""}`.trim();
-}
-
-function patioDetail(score, period) {
-  if (score >= 2.5) {
-    return `This looks like a solid window to sit outside, especially around ${formatHourLabel(period.startTime).toLowerCase()}.`;
-  }
-
-  if (score >= 1.25) {
-    return `You could probably make patio plans, but keep an eye on wind or passing showers.`;
-  }
-
-  return `This does not look especially comfortable for patio time without a backup plan.`;
-}
-
-function mowingDetail(score, period) {
-  if (score >= 2.5) {
-    return `If you want to mow, ${formatHourLabel(period.startTime).toLowerCase()} looks like your best shot.`;
-  }
-
-  if (score >= 1.25) {
-    return `Mowing may work, but the grass could get damp or breezy conditions could be annoying.`;
-  }
-
-  return `I'd wait for a better weather window before mowing the lawn.`;
-}
-
-function formatTemperature(celsius) {
-  if (typeof celsius !== "number") {
-    return "--";
-  }
-
-  const fahrenheit = (celsius * 9) / 5 + 32;
-  return `${Math.round(fahrenheit)}°F`;
-}
-
 function formatForecastTemperature(value, unit) {
   if (typeof value !== "number") {
     return "--";
   }
 
   return `${Math.round(value)}°${unit || "F"}`;
-}
-
-function formatWind(directionDegrees, metersPerSecond, gustMetersPerSecond) {
-  if (typeof metersPerSecond !== "number") {
-    return "--";
-  }
-
-  const direction = formatWindDirection(directionDegrees);
-  const speedMph = metersPerSecond * 2.23694;
-  const gust = typeof gustMetersPerSecond === "number"
-    ? `, gusts ${Math.round(gustMetersPerSecond * 2.23694)} mph`
-    : "";
-
-  return `${direction} at ${Math.round(speedMph)} mph${gust}`;
-}
-
-function formatWindDirection(degrees) {
-  if (typeof degrees !== "number") {
-    return "Wind";
-  }
-
-  const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-  const index = Math.round(degrees / 45) % directions.length;
-  return directions[index];
-}
-
-function formatPercent(value) {
-  return typeof value === "number" ? `${Math.round(value)}%` : "--";
 }
 
 function formatForecastPercent(value) {
@@ -709,22 +404,11 @@ function formatForecastWind(speed, direction) {
     return "N/A";
   }
 
-  return `${speed || ""} ${direction || ""}`.trim();
+  return `${direction || ""} ${speed || ""}`.trim();
 }
 
-function parseWindSpeedMph(windSpeed) {
-  if (!windSpeed) {
-    return 0;
-  }
-
-  const values = String(windSpeed).match(/\d+/g);
-
-  if (!values || values.length === 0) {
-    return 0;
-  }
-
-  const numbers = values.map(Number);
-  return Math.max(...numbers);
+function formatPercent(value) {
+  return typeof value === "number" ? `${Math.round(value)}%` : "--";
 }
 
 function formatVisibility(meters) {
@@ -736,67 +420,103 @@ function formatVisibility(meters) {
   return `${miles.toFixed(1)} mi`;
 }
 
-function formatDateTime(timestamp) {
-  if (!timestamp) {
+function formatPressure(pascals) {
+  if (typeof pascals !== "number") {
     return "--";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(timestamp));
-}
-
-function formatHourLabel(timestamp) {
-  if (!timestamp) {
-    return "Unknown time";
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
-    hour: "numeric"
-  }).format(new Date(timestamp));
-}
-
-function formatAlertTimeRange(effective, expires) {
-  if (!effective && !expires) {
-    return "Timing unavailable";
-  }
-
-  const parts = [];
-
-  if (effective) {
-    parts.push(`From ${formatDateTime(effective)}`);
-  }
-
-  if (expires) {
-    parts.push(`Until ${formatDateTime(expires)}`);
-  }
-
-  return parts.join(" · ");
+  const inchesMercury = pascals * 0.0002953;
+  return `${inchesMercury.toFixed(2)} inHg`;
 }
 
 function summarizeAlert(text) {
   const cleanText = String(text).replace(/\s+/g, " ").trim();
-  return cleanText.length > 240 ? `${cleanText.slice(0, 237)}...` : cleanText;
+  return cleanText.length > 220 ? `${cleanText.slice(0, 217)}...` : cleanText;
 }
 
-function alertSeverityTone(severity) {
-  const normalized = String(severity || "unknown").toLowerCase();
+function average(values) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
 
-  if (normalized === "extreme" || normalized === "severe") {
-    return normalized;
+function maxOrNull(values) {
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function isSameCalendarDay(left, right) {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+function iconForForecast(forecast = "", partKey) {
+  const normalized = forecast.toLowerCase();
+
+  if (partKey === "overnight" && !/cloud|rain|storm|snow|fog/.test(normalized)) {
+    return "moon";
   }
 
-  if (normalized === "moderate") {
-    return "moderate";
+  if (/thunder|storm|rain|showers|drizzle/.test(normalized)) {
+    return partKey === "overnight" ? "moon-cloud" : "partly";
   }
 
-  if (normalized === "minor") {
-    return "minor";
+  if (/cloud|overcast|fog|mist/.test(normalized)) {
+    return partKey === "evening" || partKey === "overnight" ? "moon-cloud" : "partly";
   }
 
-  return "unknown";
+  if (partKey === "evening") {
+    return "moon-cloud";
+  }
+
+  return partKey === "overnight" ? "moon" : "sun";
+}
+
+function makeStats(stats) {
+  return stats.map(([icon, label, value]) => `
+    <div class="metric">
+      <span aria-hidden="true">${icons[icon] || ""}</span>
+      <div>
+        <div class="metric-label">${escapeHtml(label)}</div>
+        <div class="metric-value">${escapeHtml(value)}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function weatherIcon(name) {
+  const sun = `<g><circle cx="88" cy="50" r="34" class="sun-core"/><path d="M88 1v22M88 77v22M39 50h22M115 50h22M53 15l16 16M123 15l-16 16M53 85l16-16M123 85l-16-16" class="sun-ray"/></g>`;
+  const cloud = `<path class="cloud" d="M52 119h75c19 0 34-14 34-31s-15-31-34-31c-5 0-10 1-14 3C106 43 91 32 72 32c-24 0-43 19-43 43v2C17 80 8 91 8 103c0 10 9 16 20 16h24Z"/>`;
+
+  if (name === "sun") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true">${sun}</svg>`;
+  }
+
+  if (name === "moon") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M112 15c-37 8-63 41-57 79 6 37 41 62 78 55-18-11-31-29-35-51-5-32 1-57 14-83Z"/></svg>`;
+  }
+
+  if (name === "moon-cloud") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/><path d="M134 22v10M134 52v10M114 42h10M144 42h10" stroke="#fff" stroke-linecap="round" stroke-width="4"/>${cloud.replace('d="M52', 'd="M64')}</svg>`;
+  }
+
+  return `<svg viewBox="0 0 176 150" aria-hidden="true">${sun}${cloud}</svg>`;
+}
+
+const icons = {
+  pin: `<svg width="30" height="40" viewBox="0 0 30 40" fill="none" aria-hidden="true"><path d="M15 38S3 24.4 3 15A12 12 0 0 1 27 15c0 9.4-12 23-12 23Z" stroke="currentColor" stroke-width="3"/><circle cx="15" cy="15" r="4" stroke="currentColor" stroke-width="3"/></svg>`,
+  target: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-linecap="round" stroke-width="2"/></svg>`,
+  drop: `<svg width="27" height="32" viewBox="0 0 28 34" fill="none" aria-hidden="true"><path d="M14 2S4 15 4 22a10 10 0 0 0 20 0C24 15 14 2 14 2Z" stroke="currentColor" stroke-width="2.2"/><path d="M10 25c.9 2.2 2.5 3.3 5 3.3" stroke="currentColor" stroke-linecap="round" stroke-width="2"/></svg>`,
+  wind: `<svg width="31" height="27" viewBox="0 0 34 28" fill="none" aria-hidden="true"><path d="M2 8h19c4 0 6-2 6-5 0-2-1.4-3-3.2-3-1.7 0-3 1.1-3.4 2.7M2 15h28M2 22h17c3.4 0 5 1.6 5 4 0 1.8-1.3 3-3 3-1.5 0-2.7-.9-3.2-2.1" stroke="currentColor" stroke-linecap="round" stroke-width="2.3"/></svg>`,
+  pressure: `<svg width="48" height="48" viewBox="0 0 58 58" fill="none" aria-hidden="true"><path d="M8 38a22 22 0 1 1 42 0" stroke="#21a044" stroke-width="3"/><path d="M29 38 41 22" stroke="#21a044" stroke-linecap="round" stroke-width="3"/><circle cx="29" cy="38" r="4" fill="#21a044"/><path d="M14 39h6M38 39h6M29 15v6M17 24l5 3M41 24l-5 3" stroke="#21a044" stroke-linecap="round" stroke-width="3"/></svg>`,
+  visibility: `<svg width="52" height="42" viewBox="0 0 64 48" fill="none" aria-hidden="true"><path d="M4 24s10-15 28-15 28 15 28 15-10 15-28 15S4 24 4 24Z" stroke="#1784da" stroke-width="3"/><circle cx="32" cy="24" r="8" stroke="#1784da" stroke-width="3"/><circle cx="32" cy="24" r="3" fill="#1784da"/></svg>`
+};
+
+function mountIcons() {
+  document.querySelectorAll("[data-icon]").forEach((node) => {
+    const icon = icons[node.dataset.icon];
+    if (icon) {
+      node.innerHTML = icon;
+    }
+  });
 }
 
 function escapeHtml(value) {
@@ -807,3 +527,13 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+mountIcons();
+renderForecast(buildEmptyDayParts());
+renderBottom([
+  ["target", "Source", "NWS"],
+  ["drop", "Humidity", "--"],
+  ["pressure", "Pressure", "--"],
+  ["visibility", "Visibility", "--"],
+  ["wind", "Station", "--"]
+]);
