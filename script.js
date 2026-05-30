@@ -25,66 +25,97 @@ const dayParts = [
   { key: "overnight", title: "Overnight", label: "12 AM - 6 AM", start: 0, end: 6, midpoint: 3 }
 ];
 
-let hasLoadedWeather = false;
+const defaultLocation = {
+  label: "Cincinnati, OH 45202",
+  latitude: 39.1031,
+  longitude: -84.5120
+};
 
-elements.refreshButton.addEventListener("click", loadWeather);
+let hasLoadedWeather = false;
+let activeLocationSource = "default";
+
+elements.refreshButton.addEventListener("click", loadWeatherForCurrentLocation);
 elements.alertsToggle.addEventListener("click", toggleAlerts);
 
-async function loadWeather() {
+async function loadWeatherForCurrentLocation() {
   setLoadingState(true);
-  setStatus(hasLoadedWeather ? "Refreshing your local Weather Lizard forecast..." : "Getting your location...");
+  activeLocationSource = "precise";
+  setStatus("Getting your precise location...");
   renderForecast(buildLoadingDayParts());
 
   try {
     const position = await getCurrentPosition();
-    const latitude = position.coords.latitude;
-    const longitude = position.coords.longitude;
-
-    setStatus("Finding your National Weather Service forecast office...");
-
-    const pointData = await fetchJson(
-      `https://api.weather.gov/points/${latitude.toFixed(4)},${longitude.toFixed(4)}`
-    );
-
-    const pointProperties = pointData.properties;
-    const nearbyLocation = formatNearbyLocation(pointProperties.relativeLocation?.properties);
-
-    if (!pointProperties.forecastHourly) {
-      throw new Error("No hourly forecast endpoint was returned by the National Weather Service.");
-    }
-
-    setStatus("Loading hourly forecast, current conditions, and alerts...");
-
-    const [stationUrl, hourlyForecast, alertsData] = await Promise.all([
-      getNearestStationUrl(pointProperties.observationStations),
-      fetchJson(pointProperties.forecastHourly),
-      fetchJson(`https://api.weather.gov/alerts/active?point=${latitude.toFixed(4)},${longitude.toFixed(4)}`)
-    ]);
-
-    const observation = await fetchJson(`${stationUrl}/observations/latest`);
-    const context = buildWeatherContext(hourlyForecast, observation, nearbyLocation, stationUrl);
-
-    elements.locationLabel.textContent = nearbyLocation;
-    elements.dateLabel.textContent = "Today";
-    elements.currentConditionsLabel.textContent = context.currentConditions;
-    renderForecast(context.dayPartCards);
-    renderBottom(context.bottomStats);
-    renderAlerts(alertsData);
-
-    hasLoadedWeather = true;
-    setLastLoaded(new Date());
-    setStatus("Your four-part local forecast is loaded.", "success");
+    await loadWeatherForCoordinates({
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      source: "precise"
+    });
   } catch (error) {
-    if (!hasLoadedWeather) {
-      renderForecast(buildEmptyDayParts());
-      elements.currentConditionsLabel.textContent = "Right now: waiting for local conditions.";
-      clearAlerts();
-    }
-
     setStatus(hasLoadedWeather ? `${error.message} Showing your last loaded forecast.` : error.message, "error");
   } finally {
     setLoadingState(false);
   }
+}
+
+async function loadDefaultWeather() {
+  activeLocationSource = "default";
+  setLoadingState(true);
+  setStatus(`Loading default forecast for ${defaultLocation.label}...`);
+  renderForecast(buildLoadingDayParts());
+
+  try {
+    await loadWeatherForCoordinates({ ...defaultLocation, source: "default" });
+  } catch (error) {
+    renderForecast(buildEmptyDayParts());
+    elements.currentConditionsLabel.textContent = "Right now: default forecast could not load.";
+    clearAlerts();
+    setStatus(error.message, "error");
+  } finally {
+    setLoadingState(false);
+  }
+}
+
+async function loadWeatherForCoordinates({ latitude, longitude, label, source }) {
+  setStatus("Finding your National Weather Service forecast office...");
+
+  const pointData = await fetchJson(
+    `https://api.weather.gov/points/${latitude.toFixed(4)},${longitude.toFixed(4)}`
+  );
+
+  const pointProperties = pointData.properties;
+  const nearbyLocation = label || formatNearbyLocation(pointProperties.relativeLocation?.properties);
+
+  if (!pointProperties.forecastHourly) {
+    throw new Error("No hourly forecast endpoint was returned by the National Weather Service.");
+  }
+
+  setStatus("Loading hourly forecast, current conditions, and alerts...");
+
+  const [stationUrl, hourlyForecast, alertsData] = await Promise.all([
+    getNearestStationUrl(pointProperties.observationStations),
+    fetchJson(pointProperties.forecastHourly),
+    fetchJson(`https://api.weather.gov/alerts/active?point=${latitude.toFixed(4)},${longitude.toFixed(4)}`)
+  ]);
+
+  const observation = await fetchJson(`${stationUrl}/observations/latest`);
+  const context = buildWeatherContext(hourlyForecast, observation, nearbyLocation, stationUrl);
+
+  elements.locationLabel.textContent = nearbyLocation;
+  elements.dateLabel.textContent = "Today";
+  elements.currentConditionsLabel.textContent = context.currentConditions;
+  renderForecast(context.dayPartCards);
+  renderBottom(context.bottomStats);
+  renderAlerts(alertsData);
+
+  hasLoadedWeather = true;
+  activeLocationSource = source;
+  setLastLoaded(new Date());
+  setStatus(
+    source === "default"
+      ? "Showing default forecast for 45202. Use your location for a more precise forecast."
+      : "Your location-based forecast is loaded.",
+    "success"
+  );
 }
 
 function buildWeatherContext(hourlyForecastData, observationData, nearbyLocation, stationUrl) {
@@ -275,7 +306,7 @@ function setLoadingState(isLoading) {
   elements.refreshButton.disabled = isLoading;
   elements.refreshButton.querySelector("span:last-child").textContent = isLoading
     ? "Loading..."
-    : hasLoadedWeather
+    : hasLoadedWeather && activeLocationSource === "precise"
       ? "Refresh weather"
       : "Use my location";
 }
@@ -588,3 +619,4 @@ renderBottom([
   ["visibility", "Visibility", "--"],
   ["wind", "Station", "--"]
 ]);
+loadDefaultWeather();

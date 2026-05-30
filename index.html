@@ -15,8 +15,8 @@
     />
     <meta property="og:type" content="website" />
     <title>Weather Lizard</title>
-    <link rel="icon" type="image/png" href="assets/yelling-lizard-logo.png?v=20260530-1" />
-    <link rel="stylesheet" href="styles.css?v=20260530-1" />
+    <link rel="icon" type="image/png" href="assets/yelling-lizard-logo.png?v=20260530-2" />
+    <link rel="stylesheet" href="styles.css?v=20260530-2" />
   </head>
   <body>
     <main class="page">
@@ -24,7 +24,7 @@
         <header class="topbar">
           <div class="brand">
             <span class="brand-mark" aria-hidden="true">
-              <img src="assets/yelling-lizard-logo.png?v=20260530-1" alt="" />
+              <img src="assets/yelling-lizard-logo.png?v=20260530-2" alt="" />
             </span>
             <span>Weather Lizard</span>
           </div>
@@ -48,11 +48,11 @@
         <section class="status-strip" aria-live="polite">
           <div>
             <p id="statusMessage" class="status-message status-message--info">
-              Click the button to allow location access and load your local forecast.
+              Loading a default 45202 forecast. Use your location for a more precise forecast.
             </p>
-            <p id="currentConditionsLabel" class="current-conditions-label">Right now: waiting for local conditions.</p>
+            <p id="currentConditionsLabel" class="current-conditions-label">Right now: loading Cincinnati conditions.</p>
           </div>
-          <p id="lastLoadedLabel" class="last-loaded-label">No NWS data loaded yet.</p>
+          <p id="lastLoadedLabel" class="last-loaded-label">Loading NWS data...</p>
         </section>
 
         <section id="alertsSection" class="alerts-banner hidden" aria-live="polite">
@@ -81,6 +81,6 @@
       </section>
     </main>
 
-    <script src="script.js?v=20260530-1"></script>
+    <script src="script.js?v=20260530-2"></script>
   </body>
 </html>
