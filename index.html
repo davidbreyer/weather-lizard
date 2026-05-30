@@ -40,16 +40,19 @@
           <div class="actions">
             <button id="refreshButton" class="location-button" type="button">
               <span aria-hidden="true" data-icon="target"></span>
-              <span>Get my weather</span>
+              <span>Use my location</span>
             </button>
           </div>
         </header>
 
         <section class="status-strip" aria-live="polite">
-          <p id="statusMessage" class="status-message status-message--info">
-            Click the button to allow location access and load your local forecast.
-          </p>
-          <p id="lastLoadedLabel" class="last-loaded-label">No weather data loaded yet.</p>
+          <div>
+            <p id="statusMessage" class="status-message status-message--info">
+              Click the button to allow location access and load your local forecast.
+            </p>
+            <p id="currentConditionsLabel" class="current-conditions-label">Right now: waiting for local conditions.</p>
+          </div>
+          <p id="lastLoadedLabel" class="last-loaded-label">No NWS data loaded yet.</p>
         </section>
 
         <section id="alertsSection" class="alerts-banner hidden" aria-live="polite">

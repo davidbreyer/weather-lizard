@@ -5,6 +5,7 @@
   --line: rgba(10, 28, 70, 0.16);
   --white: #ffffff;
   --blue: #1769e0;
+  --lizard: #83a64d;
   --danger: #991b1b;
   --warning: #9a3412;
   --shadow: 0 24px 70px rgba(8, 23, 58, 0.18);
@@ -88,16 +89,22 @@ a:focus-visible {
 }
 
 .brand-mark {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   flex: 0 0 auto;
   display: grid;
   place-items: center;
+  border: 1px solid rgba(131, 166, 77, 0.32);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 70% 20%, rgba(255, 194, 39, 0.16), transparent 30%),
+    rgba(255, 255, 255, 0.74);
+  box-shadow: 0 10px 22px rgba(8, 23, 58, 0.08);
 }
 
 .brand-mark img {
-  width: 100%;
-  height: 100%;
+  width: 37px;
+  height: 37px;
   display: block;
   object-fit: contain;
 }
@@ -159,7 +166,7 @@ a:focus-visible {
 
 .location-button:hover {
   transform: translateY(-1px);
-  border-color: rgba(23, 105, 224, 0.35);
+  border-color: rgba(131, 166, 77, 0.52);
   background: #fff;
 }
 
@@ -179,7 +186,12 @@ a:focus-visible {
   background: rgba(255, 255, 255, 0.72);
 }
 
+.status-strip > div {
+  min-width: 0;
+}
+
 .status-message,
+.current-conditions-label,
 .last-loaded-label {
   margin: 0;
   font-size: 14px;
@@ -195,7 +207,7 @@ a:focus-visible {
 }
 
 .status-message--success {
-  color: #166534;
+  color: #356612;
 }
 
 .status-message--error {
@@ -207,18 +219,43 @@ a:focus-visible {
   text-align: right;
 }
 
+.current-conditions-label {
+  margin-top: 4px;
+  color: #31405f;
+  font-weight: 650;
+}
+
 .alerts-banner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
   gap: 12px 18px;
-  padding: 14px 30px;
-  border-top: 1px solid rgba(251, 146, 60, 0.32);
-  background: linear-gradient(90deg, rgba(255, 237, 213, 0.95), rgba(255, 255, 255, 0.9));
+  align-items: center;
+  padding: 12px 30px;
+  border-top: 1px solid rgba(251, 146, 60, 0.28);
+  background:
+    linear-gradient(90deg, rgba(255, 247, 237, 0.98), rgba(255, 255, 255, 0.9)),
+    linear-gradient(90deg, rgba(251, 146, 60, 0.1), transparent);
 }
 
 .alerts-banner strong {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--warning);
+}
+
+.alerts-banner strong::before {
+  content: "!";
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #f97316;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 900;
 }
 
 .alerts-banner span {
@@ -227,10 +264,11 @@ a:focus-visible {
 }
 
 .text-button {
-  border: 0;
-  padding: 0;
+  border: 1px solid rgba(249, 115, 22, 0.28);
+  border-radius: 999px;
+  padding: 7px 12px;
   color: var(--blue);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.7);
   font-weight: 850;
   cursor: pointer;
 }
@@ -246,6 +284,16 @@ a:focus-visible {
   border: 1px solid rgba(251, 146, 60, 0.22);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.78);
+}
+
+.alert-card--severe {
+  border-color: rgba(220, 38, 38, 0.34);
+  background: rgba(254, 242, 242, 0.86);
+}
+
+.alert-card--moderate {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(255, 251, 235, 0.88);
 }
 
 .alert-card h3,
@@ -468,6 +516,11 @@ a:focus-visible {
   font-weight: 760;
 }
 
+.mini-stat:first-child .mini-label,
+.mini-stat:first-child .mini-value {
+  color: #3f6212;
+}
+
 .mini-value {
   margin-top: 4px;
   color: #071942;
@@ -583,8 +636,14 @@ svg {
   }
 
   .brand-mark {
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+
+  .brand-mark img {
+    width: 31px;
+    height: 31px;
   }
 
   .place {
@@ -600,17 +659,28 @@ svg {
   .location-button {
     width: 100%;
     justify-content: center;
-    min-height: 42px;
+    min-height: 38px;
     border-radius: 10px;
   }
 
   .status-strip,
   .alerts-banner {
-    padding: 12px 18px;
+    padding: 10px 18px;
+  }
+
+  .status-strip {
+    gap: 7px;
+  }
+
+  .status-message,
+  .current-conditions-label,
+  .last-loaded-label {
+    font-size: 13px;
   }
 
   .alerts-banner {
     grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .forecast-grid {

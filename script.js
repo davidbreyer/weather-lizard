@@ -1,6 +1,7 @@
 const elements = {
   refreshButton: document.querySelector("#refreshButton"),
   statusMessage: document.querySelector("#statusMessage"),
+  currentConditionsLabel: document.querySelector("#currentConditionsLabel"),
   lastLoadedLabel: document.querySelector("#lastLoadedLabel"),
   locationLabel: document.querySelector("#locationLabel"),
   dateLabel: document.querySelector("#dateLabel"),
@@ -65,6 +66,7 @@ async function loadWeather() {
 
     elements.locationLabel.textContent = nearbyLocation;
     elements.dateLabel.textContent = "Today";
+    elements.currentConditionsLabel.textContent = context.currentConditions;
     renderForecast(context.dayPartCards);
     renderBottom(context.bottomStats);
     renderAlerts(alertsData);
@@ -75,6 +77,7 @@ async function loadWeather() {
   } catch (error) {
     if (!hasLoadedWeather) {
       renderForecast(buildEmptyDayParts());
+      elements.currentConditionsLabel.textContent = "Right now: waiting for local conditions.";
       clearAlerts();
     }
 
@@ -95,9 +98,11 @@ function buildWeatherContext(hourlyForecastData, observationData, nearbyLocation
   const anchorDate = getForecastAnchorDate(periods);
   const stationCode = stationUrl.split("/").pop() || "NWS";
   const currentHumidity = observation.relativeHumidity?.value;
+  const currentSummary = observation.textDescription || "Current conditions";
 
   return {
     dayPartCards: dayParts.map((part) => buildDayPartCard(part, periods, anchorDate, currentHumidity)),
+    currentConditions: `Right now: ${formatObservedTemperature(observation.temperature?.value)} - ${currentSummary} - ${nearbyLocation}`,
     bottomStats: [
       ["target", "Location", nearbyLocation],
       ["drop", "Humidity", formatPercent(currentHumidity)],
@@ -242,7 +247,7 @@ function renderAlerts(alertsData) {
   elements.alertsTitle.textContent = alerts.length === 1 ? "1 active alert" : `${alerts.length} active alerts`;
   elements.alertsSummary.textContent = alerts.map((alert) => alert.event).filter(Boolean).join(" · ");
   elements.alertsList.innerHTML = alerts.map((alert) => `
-    <article class="alert-card">
+    <article class="alert-card alert-card--${alertSeverityTone(alert.severity)}">
       <h3>${escapeHtml(alert.event || "Weather alert")}</h3>
       <p>${escapeHtml(alert.areaDesc || "Area unavailable")}</p>
       <p>${escapeHtml(summarizeAlert(alert.headline || alert.description || "Alert details unavailable."))}</p>
@@ -272,7 +277,7 @@ function setLoadingState(isLoading) {
     ? "Loading..."
     : hasLoadedWeather
       ? "Refresh weather"
-      : "Get my weather";
+      : "Use my location";
 }
 
 function setStatus(message, type = "info") {
@@ -281,7 +286,7 @@ function setStatus(message, type = "info") {
 }
 
 function setLastLoaded(date) {
-  elements.lastLoadedLabel.textContent = `Last refreshed ${new Intl.DateTimeFormat(undefined, {
+  elements.lastLoadedLabel.textContent = `NWS data refreshed ${new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(date)}.`;
@@ -348,11 +353,30 @@ async function fetchJson(url) {
 }
 
 function buildEmptyDayParts() {
+  const emptyCopy = {
+    morning: {
+      condition: "Ready when you are",
+      note: "Use your location to pull the first local forecast window."
+    },
+    afternoon: {
+      condition: "Local forecast pending",
+      note: "The afternoon card will fill with NWS temperature, wind, and rain chance."
+    },
+    evening: {
+      condition: "Plans start here",
+      note: "Evening details will appear after location access is allowed."
+    },
+    overnight: {
+      condition: "Night forecast pending",
+      note: "Overnight conditions will load from the hourly NWS forecast."
+    }
+  };
+
   return dayParts.map((part) => ({
     ...part,
     temperature: "--",
-    condition: "Waiting for location",
-    note: "Allow location access to load the National Weather Service forecast for this part of your day.",
+    condition: emptyCopy[part.key].condition,
+    note: emptyCopy[part.key].note,
     icon: part.key === "overnight" ? "moon" : part.key === "evening" ? "moon-cloud" : "partly",
     stats: [
       ["drop", "Rain Chance", "--"],
@@ -395,6 +419,15 @@ function formatForecastTemperature(value, unit) {
   return `${Math.round(value)}°${unit || "F"}`;
 }
 
+function formatObservedTemperature(celsius) {
+  if (typeof celsius !== "number") {
+    return "--";
+  }
+
+  const fahrenheit = (celsius * 9) / 5 + 32;
+  return `${Math.round(fahrenheit)}°F`;
+}
+
 function formatForecastPercent(value) {
   return typeof value === "number" ? `${Math.round(value)}%` : "N/A";
 }
@@ -432,6 +465,24 @@ function formatPressure(pascals) {
 function summarizeAlert(text) {
   const cleanText = String(text).replace(/\s+/g, " ").trim();
   return cleanText.length > 220 ? `${cleanText.slice(0, 217)}...` : cleanText;
+}
+
+function alertSeverityTone(severity) {
+  const normalized = String(severity || "unknown").toLowerCase();
+
+  if (normalized === "extreme" || normalized === "severe") {
+    return "severe";
+  }
+
+  if (normalized === "moderate") {
+    return "moderate";
+  }
+
+  if (normalized === "minor") {
+    return "minor";
+  }
+
+  return "unknown";
 }
 
 function average(values) {
