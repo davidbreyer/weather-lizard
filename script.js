@@ -11,8 +11,11 @@ const elements = {
   alertsToggle: document.querySelector("#alertsToggle"),
   alertsList: document.querySelector("#alertsList"),
   forecastGrid: document.querySelector("#forecastGrid"),
-  bottomStrip: document.querySelector("#bottomStrip")
+  bottomStrip: document.querySelector("#bottomStrip"),
+  releaseBadge: document.querySelector("#releaseBadge")
 };
+
+const appRelease = "20260531-0824";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
@@ -1006,6 +1009,12 @@ function mountIcons() {
   });
 }
 
+function renderReleaseBadge() {
+  if (elements.releaseBadge) {
+    elements.releaseBadge.textContent = `Release: ${appRelease}`;
+  }
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -1016,6 +1025,7 @@ function escapeHtml(value) {
 }
 
 mountIcons();
+renderReleaseBadge();
 updateDayTabs();
 renderForecast(buildEmptyDayParts());
 renderBottom([

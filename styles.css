@@ -625,6 +625,23 @@ svg {
   display: block;
 }
 
+.release-badge {
+  position: fixed;
+  right: 12px;
+  bottom: 10px;
+  z-index: 20;
+  padding: 4px 7px;
+  border: 1px solid rgba(19, 33, 61, 0.08);
+  border-radius: 999px;
+  color: rgba(19, 33, 61, 0.54);
+  background: rgba(255, 255, 255, 0.56);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
 @media (max-width: 920px) {
   .topbar {
     grid-template-columns: 1fr;
@@ -845,6 +862,12 @@ svg {
   .mini-stat svg {
     width: 28px;
     height: 28px;
+  }
+
+  .release-badge {
+    right: 8px;
+    bottom: 6px;
+    font-size: 10px;
   }
 }
 
