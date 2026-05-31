@@ -4,7 +4,7 @@ const elements = {
   currentConditionsLabel: document.querySelector("#currentConditionsLabel"),
   lastLoadedLabel: document.querySelector("#lastLoadedLabel"),
   locationLabel: document.querySelector("#locationLabel"),
-  dateLabel: document.querySelector("#dateLabel"),
+  dayTabs: Array.from(document.querySelectorAll("[data-day]")),
   alertsSection: document.querySelector("#alertsSection"),
   alertsTitle: document.querySelector("#alertsTitle"),
   alertsSummary: document.querySelector("#alertsSummary"),
@@ -33,12 +33,18 @@ const defaultLocation = {
 
 let hasLoadedWeather = false;
 let activeLocationSource = "default";
+let selectedDay = shouldDefaultToTomorrow() ? "tomorrow" : "today";
+let latestWeatherData = null;
 
 elements.refreshButton.addEventListener("click", loadWeatherForCurrentLocation);
 elements.alertsToggle.addEventListener("click", toggleAlerts);
+elements.dayTabs.forEach((tab) => {
+  tab.addEventListener("click", () => setSelectedDay(tab.dataset.day));
+});
 
 async function loadWeatherForCurrentLocation() {
   setLoadingState(true);
+  const previousLocationSource = activeLocationSource;
   activeLocationSource = "precise";
   setStatus("Getting your precise location...");
   renderForecast(buildLoadingDayParts());
@@ -51,6 +57,11 @@ async function loadWeatherForCurrentLocation() {
       source: "precise"
     });
   } catch (error) {
+    activeLocationSource = previousLocationSource;
+    if (latestWeatherData) {
+      const context = buildWeatherContext(latestWeatherData, selectedDay);
+      renderForecast(context.dayPartCards);
+    }
     setStatus(hasLoadedWeather ? `${error.message} Showing your last loaded forecast.` : error.message, "error");
   } finally {
     setLoadingState(false);
@@ -98,10 +109,10 @@ async function loadWeatherForCoordinates({ latitude, longitude, label, source })
   ]);
 
   const observation = await fetchJson(`${stationUrl}/observations/latest`);
-  const context = buildWeatherContext(hourlyForecast, observation, nearbyLocation, stationUrl);
+  latestWeatherData = { hourlyForecast, observation, nearbyLocation, stationUrl };
+  const context = buildWeatherContext(latestWeatherData, selectedDay);
 
   elements.locationLabel.textContent = nearbyLocation;
-  elements.dateLabel.textContent = "Today";
   elements.currentConditionsLabel.textContent = context.currentConditions;
   renderForecast(context.dayPartCards);
   renderBottom(context.bottomStats);
@@ -118,36 +129,64 @@ async function loadWeatherForCoordinates({ latitude, longitude, label, source })
   );
 }
 
-function buildWeatherContext(hourlyForecastData, observationData, nearbyLocation, stationUrl) {
+function setSelectedDay(day) {
+  selectedDay = day;
+  updateDayTabs();
+
+  if (!latestWeatherData) {
+    return;
+  }
+
+  const context = buildWeatherContext(latestWeatherData, selectedDay);
+  renderForecast(context.dayPartCards);
+  setStatus(day === "today" ? "Showing today's forecast windows." : "Showing tomorrow's forecast windows.", "success");
+}
+
+function updateDayTabs() {
+  elements.dayTabs.forEach((tab) => {
+    const isActive = tab.dataset.day === selectedDay;
+    tab.classList.toggle("is-active", isActive);
+    tab.setAttribute("aria-pressed", String(isActive));
+  });
+}
+
+function buildWeatherContext(weatherData, day) {
+  const { hourlyForecast, observation, nearbyLocation, stationUrl } = weatherData;
+  const hourlyForecastData = hourlyForecast;
+  const observationData = observation;
   const periods = hourlyForecastData.properties?.periods ?? [];
 
   if (periods.length === 0) {
     throw new Error("No hourly forecast data was returned by the National Weather Service.");
   }
 
-  const observation = observationData.properties ?? {};
-  const anchorDate = getForecastAnchorDate(periods);
+  const observationProperties = observationData.properties ?? {};
+  const anchorDate = getForecastAnchorDate(periods, day);
   const stationCode = stationUrl.split("/").pop() || "NWS";
-  const currentHumidity = observation.relativeHumidity?.value;
-  const currentSummary = observation.textDescription || "Current conditions";
+  const currentHumidity = observationProperties.relativeHumidity?.value;
+  const currentSummary = observationProperties.textDescription || "Current conditions";
 
   return {
-    dayPartCards: dayParts.map((part) => buildDayPartCard(part, periods, anchorDate, currentHumidity)),
-    currentConditions: `Right now: ${formatObservedTemperature(observation.temperature?.value)} - ${currentSummary} - ${nearbyLocation}`,
+    dayPartCards: dayParts.map((part) => buildDayPartCard(part, periods, anchorDate, currentHumidity, day)),
+    currentConditions: `Right now: ${formatObservedTemperature(observationProperties.temperature?.value)} - ${currentSummary} - ${nearbyLocation}`,
     bottomStats: [
       ["target", "Location", nearbyLocation],
       ["drop", "Humidity", formatPercent(currentHumidity)],
-      ["pressure", "Pressure", formatPressure(observation.barometricPressure?.value)],
-      ["visibility", "Visibility", formatVisibility(observation.visibility?.value)],
+      ["pressure", "Pressure", formatPressure(observationProperties.barometricPressure?.value)],
+      ["visibility", "Visibility", formatVisibility(observationProperties.visibility?.value)],
       ["wind", "Station", stationCode]
     ]
   };
 }
 
-function buildDayPartCard(part, periods, anchorDate, fallbackHumidity) {
-  const candidates = periods.filter((period) => isPeriodInDayPart(period, part, anchorDate));
-  const fallback = findNextPeriodForPart(periods, part) || periods[0];
-  const representative = chooseRepresentativePeriod(candidates, part) || fallback;
+function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day) {
+  const candidates = periods.filter((period) => isPeriodInDayPart(period, part, anchorDate, day));
+
+  if (candidates.length === 0) {
+    return buildUnavailableDayPartCard(part, day, anchorDate);
+  }
+
+  const representative = chooseRepresentativePeriod(candidates, part);
   const source = candidates.length > 0 ? candidates : [representative];
   const temps = source.map((period) => period.temperature).filter((value) => typeof value === "number");
   const precipValues = source
@@ -174,18 +213,43 @@ function buildDayPartCard(part, periods, anchorDate, fallbackHumidity) {
   };
 }
 
-function getForecastAnchorDate(periods) {
-  const now = new Date();
-  const todayPeriods = periods.filter((period) => isSameCalendarDay(new Date(period.startTime), now));
+function buildUnavailableDayPartCard(part, day, anchorDate) {
+  const isPassed = day === "today" && isDayPartPassed(part, anchorDate);
+  return {
+    ...part,
+    temperature: "--",
+    condition: isPassed ? "Passed" : "Forecast unavailable",
+    state: isPassed ? "passed" : "unavailable",
+    note: isPassed
+      ? `${part.title} has already passed for today. Check Tomorrow for the next ${part.title.toLowerCase()} forecast.`
+      : `The National Weather Service hourly feed did not include this ${day} window yet.`,
+    icon: part.key === "overnight" ? "moon" : part.key === "evening" ? "moon-cloud" : "partly",
+    stats: [
+      ["drop", "Rain Chance", "--"],
+      ["wind", "Wind", "--"],
+      ["drop", "Humidity", "--"]
+    ]
+  };
+}
 
-  if (todayPeriods.length > 0) {
-    return now;
+function getForecastAnchorDate(periods, day) {
+  const now = new Date();
+  const targetDate = new Date(now);
+
+  if (day === "tomorrow") {
+    targetDate.setDate(targetDate.getDate() + 1);
+  }
+
+  const targetPeriods = periods.filter((period) => isSameCalendarDay(new Date(period.startTime), targetDate));
+
+  if (targetPeriods.length > 0) {
+    return targetDate;
   }
 
   return new Date(periods[0].startTime);
 }
 
-function isPeriodInDayPart(period, part, anchorDate) {
+function isPeriodInDayPart(period, part, anchorDate, day) {
   const date = new Date(period.startTime);
 
   if (!isSameCalendarDay(date, anchorDate)) {
@@ -193,7 +257,38 @@ function isPeriodInDayPart(period, part, anchorDate) {
   }
 
   const hour = date.getHours();
-  return hour >= part.start && hour < part.end;
+  const inWindow = hour >= part.start && hour < part.end;
+
+  if (!inWindow) {
+    return false;
+  }
+
+  if (day === "today") {
+    const now = new Date();
+    return date >= startOfCurrentHour(now);
+  }
+
+  return true;
+}
+
+function isDayPartPassed(part, anchorDate) {
+  const now = new Date();
+
+  if (!isSameCalendarDay(now, anchorDate)) {
+    return false;
+  }
+
+  return now.getHours() >= part.end;
+}
+
+function shouldDefaultToTomorrow() {
+  return new Date().getHours() >= 21;
+}
+
+function startOfCurrentHour(date) {
+  const currentHour = new Date(date);
+  currentHour.setMinutes(0, 0, 0);
+  return currentHour;
 }
 
 function chooseRepresentativePeriod(periods, part) {
@@ -234,7 +329,7 @@ function buildDayPartNote(part, period, precipValues) {
 
 function renderForecast(cards) {
   elements.forecastGrid.innerHTML = cards.map((card) => `
-    <article class="quad ${card.key}">
+    <article class="quad ${card.key}${card.state ? ` quad--${card.state}` : ""}">
       <div class="quad-content">
         <div class="time">
           <h2>${escapeHtml(card.title)}</h2>
@@ -611,6 +706,7 @@ function escapeHtml(value) {
 }
 
 mountIcons();
+updateDayTabs();
 renderForecast(buildEmptyDayParts());
 renderBottom([
   ["target", "Source", "NWS"],

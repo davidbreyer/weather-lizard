@@ -15,8 +15,8 @@
     />
     <meta property="og:type" content="website" />
     <title>Weather Lizard</title>
-    <link rel="icon" type="image/png" href="assets/yelling-lizard-logo.png?v=20260530-2" />
-    <link rel="stylesheet" href="styles.css?v=20260530-2" />
+    <link rel="icon" type="image/png" href="assets/yelling-lizard-logo.png?v=20260530-3" />
+    <link rel="stylesheet" href="styles.css?v=20260530-3" />
   </head>
   <body>
     <main class="page">
@@ -24,7 +24,7 @@
         <header class="topbar">
           <div class="brand">
             <span class="brand-mark" aria-hidden="true">
-              <img src="assets/yelling-lizard-logo.png?v=20260530-2" alt="" />
+              <img src="assets/yelling-lizard-logo.png?v=20260530-3" alt="" />
             </span>
             <span>Weather Lizard</span>
           </div>
@@ -34,7 +34,10 @@
               <span aria-hidden="true" data-icon="pin"></span>
               <span id="locationLabel">Your location</span>
             </div>
-            <div id="dateLabel" class="date">Today</div>
+            <div class="day-tabs" aria-label="Forecast day">
+              <button id="todayTab" type="button" class="day-tab" data-day="today" aria-pressed="true">Today</button>
+              <button id="tomorrowTab" type="button" class="day-tab" data-day="tomorrow" aria-pressed="false">Tomorrow</button>
+            </div>
           </div>
 
           <div class="actions">
@@ -81,6 +84,6 @@
       </section>
     </main>
 
-    <script src="script.js?v=20260530-2"></script>
+    <script src="script.js?v=20260530-3"></script>
   </body>
 </html>

@@ -113,13 +113,13 @@ a:focus-visible {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 14px;
 }
 
 .place {
   min-width: 0;
   gap: 14px;
-  font-size: 32px;
+  font-size: 30px;
   line-height: 1.1;
   font-weight: 850;
   white-space: nowrap;
@@ -130,15 +130,45 @@ a:focus-visible {
   text-overflow: ellipsis;
 }
 
-.date {
-  min-height: 36px;
-  padding-left: 24px;
+.day-tabs {
+  min-height: 42px;
+  padding-left: 16px;
   border-left: 1px solid var(--line);
-  color: var(--blue);
-  font-size: 24px;
-  font-weight: 700;
   display: flex;
   align-items: center;
+  gap: 4px;
+}
+
+.day-tab {
+  min-width: 88px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  color: #52607b;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 850;
+  cursor: pointer;
+  transition:
+    color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.day-tab.is-active {
+  color: #fff;
+  background: #1769e0;
+  box-shadow: 0 8px 18px rgba(23, 105, 224, 0.18);
+}
+
+.day-tab:hover {
+  color: #0b2a6a;
+  background: rgba(23, 105, 224, 0.08);
+}
+
+.day-tab.is-active:hover {
+  color: #fff;
+  background: #1769e0;
 }
 
 .actions {
@@ -386,6 +416,26 @@ a:focus-visible {
   --haze: 0.98;
   --silhouette: 0.34;
   color: #fff;
+}
+
+.quad--passed,
+.quad--unavailable {
+  color: rgba(6, 25, 66, 0.76);
+}
+
+.quad--passed::before,
+.quad--unavailable::before {
+  filter: grayscale(0.18) saturate(0.72);
+}
+
+.overnight.quad--passed,
+.overnight.quad--unavailable {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.quad--passed .weather-art,
+.quad--unavailable .weather-art {
+  opacity: 0.54;
 }
 
 .quad-content {
@@ -650,10 +700,16 @@ svg {
     font-size: 20px;
   }
 
-  .date {
+  .day-tabs {
     min-height: auto;
-    padding-left: 12px;
-    font-size: 15px;
+    padding-left: 10px;
+    gap: 3px;
+  }
+
+  .day-tab {
+    min-width: 76px;
+    min-height: 30px;
+    font-size: 13px;
   }
 
   .location-button {
