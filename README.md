@@ -1,48 +1,68 @@
 # Weather Lizard
 
-Weather Lizard is a small static JavaScript weather app. It uses the National Weather Service API to show a four-part forecast for Morning, Afternoon, Evening, and Overnight.
+Weather Lizard is a small static weather app with a friendly four-part day view: Morning, Afternoon, Evening, and Overnight. It uses the National Weather Service API, defaults to Cincinnati, OH 45202, and can switch to the user's precise browser location.
 
-The app defaults to Cincinnati, OH 45202 so the page is useful immediately, then lets the user switch to their precise browser location. It also includes Today/Tomorrow tabs, active NWS alerts, current observations, and a small release stamp for cache/debug checks.
+The goal is to make the forecast feel quick to read. Instead of dumping raw hourly data, Weather Lizard groups the day into practical windows and chooses a human-readable condition for each one.
 
-## Run Locally
+## Features
+
+- Four forecast cards for Morning, Afternoon, Evening, and Overnight
+- `Today` and `Tomorrow` tabs
+- Default 45202 forecast so the page never opens empty
+- Browser geolocation for a more precise local forecast
+- Active NWS alert banner
+- Current conditions and station details
+- Custom Weather Lizard logo
+- Mobile-friendly responsive layout
+- Subtle animated weather artwork
+- Bottom-right release stamp for cache/debug checks
+
+## Local Preview
 
 Because browser geolocation usually requires a secure context, serve the files from `localhost` instead of opening `index.html` directly.
 
-### Option 1: Windows Helper
+### Windows Helper
 
-Double-click `start-server.bat` in the `weather-lizard` folder. It opens `http://localhost:8000` and starts a local server using `python` or `py`.
+Double-click `start-server.bat` in the project folder. It opens `http://localhost:8000` and starts a local server using `python` or `py`.
 
-### Option 2: Python
+### Python
 
 ```powershell
 cd C:\Users\User\weather-lizard
 python -m http.server 8000
 ```
 
-Then open `http://localhost:8000` in your browser.
+Then open:
 
-## How It Works
+```text
+http://localhost:8000
+```
 
-1. The app loads the default forecast for ZIP code 45202.
-2. If the user clicks `Use my location`, the browser geolocation API provides latitude and longitude.
-3. The app calls `https://api.weather.gov/points/{lat},{lon}`.
-4. It follows the returned `forecastHourly` URL for hourly forecast periods.
-5. It fetches the nearest station and latest observation for current conditions.
-6. It calls NWS active alerts for the selected point.
-7. It groups hourly periods into four forecast windows.
+## Data Flow
+
+1. Load the default forecast for ZIP code 45202.
+2. If requested, get latitude and longitude from browser geolocation.
+3. Call `https://api.weather.gov/points/{lat},{lon}`.
+4. Follow the returned `forecastHourly` URL.
+5. Fetch the nearest observation station and latest observation.
+6. Fetch active NWS alerts for the point.
+7. Group hourly periods into daypart cards.
+8. Run the weather description rules to choose each card's main label.
 
 ## Forecast Windows
 
 - `Morning`: 6 AM - 12 PM
 - `Afternoon`: 12 PM - 6 PM
 - `Evening`: 6 PM - 12 AM
-- `Overnight`: the upcoming 12 AM - 6 AM window
+- `Overnight`: upcoming 12 AM - 6 AM
 
-At night, the page defaults to the `Tomorrow` tab so it does not open on a mostly passed day. The `Overnight` card is treated as the upcoming overnight period, not the already-finished early morning period.
+The `Overnight` card means the upcoming overnight period. At 6:40 AM, for example, it points to tonight/early tomorrow rather than the early morning hours that already passed.
+
+Late at night, the page defaults to the `Tomorrow` tab so the first view is still useful.
 
 ## Weather Description Rules
 
-The app summarizes each daypart before choosing the main condition label. The rule priority is:
+Weather Lizard summarizes each daypart, then applies the rules in priority order:
 
 1. Hazardous weather
 2. Meaningful precipitation
@@ -51,15 +71,25 @@ The app summarizes each daypart before choosing the main condition label. The ru
 5. Wind
 6. General sky condition
 
-This means rain wins over humidity. For example, rain with 100% humidity is displayed as `Rainy`, not `Humid`.
+This keeps the headline focused. If it is raining with 100% humidity, the card says `Rainy`, not `Humid`.
 
-Light rain wording from NWS is filtered through a threshold:
+### Rain Thresholds
 
-- Wet wording below 40% precipitation chance: `Mostly dry`
+NWS can include cautious rain wording even when the actual chance is tiny. Weather Lizard uses precipitation chance to decide whether wet weather should be the headline:
+
+- Below 40% with wet wording: `Mostly dry`
 - 40% to 69%: `Chance of showers`
 - 70% or higher: `Rainy`
 
-Humidity uses dew point when available. If dew point is not available, the fallback is temperature at or above 75°F with humidity at or above 70%.
+### Humidity
+
+Humidity uses dew point when available. If dew point is not available, the fallback is:
+
+```text
+temperature >= 75°F and relative humidity >= 70%
+```
+
+That keeps normal overnight relative humidity from being treated as a muggy headline by itself.
 
 ## Release Stamp
 
@@ -69,30 +99,17 @@ The bottom-right badge displays the current release:
 Release: YYYYMMDD-HHMM
 ```
 
-The current value lives in `script.js`:
+The value lives in `script.js`:
 
 ```js
 const appRelease = "YYYYMMDD-HHMM";
 ```
 
-The same value is also used for the cache-busting query strings in `index.html` for `styles.css`, `script.js`, and the logo assets.
-
-The pre-commit hook described below updates these values automatically. If hooks are not enabled, update these before committing:
-
-- `const appRelease` in `script.js`
-- `?v=...` query strings in `index.html`
-
-Example:
-
-```text
-20260531-0922
-```
-
-The format is year, month, day, dash, 24-hour local time.
+The same value is used for cache-busting query strings in `index.html`.
 
 ## Git Hooks
 
-This repo includes a pre-commit hook that updates the release stamp automatically before each commit.
+The repo includes a pre-commit hook that updates the release stamp automatically before each commit.
 
 Enable it once per local clone:
 
@@ -111,10 +128,14 @@ The script updates:
 - `const appRelease` in `script.js`
 - all `?v=...` cache-busting query strings in `index.html`
 
-The hook then stages `index.html` and `script.js` so the generated release stamp is included in the commit.
+The hook stages `index.html` and `script.js` so the generated release stamp is included in the commit.
 
-## Deployment Notes
+## Deployment
 
 This is a static site. There is no build step, bundler, or server-side application code.
 
-Cloudflare or browser caching may hold onto old files. The release stamp and cache query strings are there to make it obvious which version is being served.
+Cloudflare or browser caching may hold onto old files. The release stamp and cache query strings make it obvious which version is being served.
+
+## Repository
+
+GitHub: [davidbreyer/weather-lizard](https://github.com/davidbreyer/weather-lizard)
