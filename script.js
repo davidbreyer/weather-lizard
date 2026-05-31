@@ -26,6 +26,9 @@ const dayParts = [
 ];
 
 const rainConditionThreshold = 40;
+const likelyRainThreshold = 70;
+const windyThreshold = 30;
+const breezyThreshold = 20;
 
 const defaultLocation = {
   label: "Cincinnati, OH 45202",
@@ -197,7 +200,7 @@ function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day) {
   const humidityValues = source
     .map((period) => period.relativeHumidity?.value)
     .filter((value) => typeof value === "number");
-  const condition = conditionForForecast(representative.shortForecast, precipValues);
+  const description = describeWeather(source, representative, part, fallbackHumidity);
 
   return {
     ...part,
@@ -205,9 +208,9 @@ function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day) {
       temps.length > 0 ? Math.round(average(temps)) : representative.temperature,
       representative.temperatureUnit
     ),
-    condition,
-    note: buildDayPartNote(part, condition, precipValues),
-    icon: iconForForecast(condition, part.key),
+    condition: description.condition,
+    note: description.note,
+    icon: description.icon,
     stats: [
       ["drop", "Rain Chance", formatForecastPercent(maxOrNull(precipValues))],
       ["wind", "Wind", formatForecastWind(representative.windSpeed, representative.windDirection)],
@@ -326,32 +329,312 @@ function findNextPeriodForPart(periods, part) {
   });
 }
 
-function conditionForForecast(forecast, precipValues) {
-  const rain = maxOrNull(precipValues);
-  const normalized = String(forecast || "").toLowerCase();
-  const hasWetCondition = /drizzle|rain|shower|storm|thunder/.test(normalized);
+function describeWeather(periods, representative, part, fallbackHumidity) {
+  const metrics = summarizeWeatherMetrics(periods, representative, fallbackHumidity);
+  const rule = chooseWeatherRule(metrics);
+  const note = buildWeatherNote(part, rule, metrics);
 
-  if (hasWetCondition && typeof rain === "number" && rain < rainConditionThreshold) {
-    return "Mostly dry";
-  }
-
-  return forecast || "Forecast unavailable";
+  return {
+    condition: rule.condition,
+    note,
+    icon: iconForForecast(rule.iconForecast || rule.condition, part.key)
+  };
 }
 
-function buildDayPartNote(part, condition, precipValues) {
-  const rain = maxOrNull(precipValues);
-  const rainPhrase = typeof rain === "number" && rain >= rainConditionThreshold
-    ? ` Keep an eye on a ${Math.round(rain)}% precipitation chance.`
-    : "";
+function summarizeWeatherMetrics(periods, representative, fallbackHumidity) {
+  const temps = periods.map((period) => period.temperature).filter((value) => typeof value === "number");
+  const precipValues = periods
+    .map((period) => period.probabilityOfPrecipitation?.value)
+    .filter((value) => typeof value === "number");
+  const humidityValues = periods
+    .map((period) => period.relativeHumidity?.value)
+    .filter((value) => typeof value === "number");
+  const dewPointValues = periods
+    .map((period) => celsiusToFahrenheit(period.dewpoint?.value))
+    .filter((value) => typeof value === "number");
+  const windValues = periods.map((period) => parseWindMph(period.windSpeed)).filter((value) => typeof value === "number");
+  const forecast = representative.shortForecast || "Forecast unavailable";
+  const normalizedForecast = forecast.toLowerCase();
 
+  return {
+    forecast,
+    normalizedForecast,
+    temperature: temps.length > 0 ? Math.round(average(temps)) : representative.temperature,
+    precipChance: maxOrNull(precipValues),
+    humidity: maxOrNull(humidityValues) ?? fallbackHumidity,
+    dewPoint: maxOrNull(dewPointValues),
+    windMph: maxOrNull(windValues),
+    hasWetForecast: /drizzle|rain|shower|storm|thunder/.test(normalizedForecast),
+    hasSnowForecast: /snow|sleet|flurr/.test(normalizedForecast),
+    hasIceForecast: /ice|freezing rain/.test(normalizedForecast),
+    hasFogForecast: /fog|mist/.test(normalizedForecast)
+  };
+}
+
+function chooseWeatherRule(metrics) {
+  const hazardRule = hazardousWeatherRule(metrics);
+
+  if (hazardRule) {
+    return hazardRule;
+  }
+
+  const precipitationRule = precipitationWeatherRule(metrics);
+
+  if (precipitationRule) {
+    return precipitationRule;
+  }
+
+  const temperatureRule = temperatureWeatherRule(metrics);
+
+  if (temperatureRule) {
+    return temperatureRule;
+  }
+
+  const humidityRule = humidityWeatherRule(metrics);
+
+  if (humidityRule) {
+    return humidityRule;
+  }
+
+  const windRule = windWeatherRule(metrics);
+
+  if (windRule) {
+    return windRule;
+  }
+
+  return skyWeatherRule(metrics);
+}
+
+function hazardousWeatherRule(metrics) {
+  if (/tornado/.test(metrics.normalizedForecast)) {
+    return { condition: "Tornado risk", reason: "hazard", iconForecast: "thunderstorm" };
+  }
+
+  if (/severe|thunder|storm/.test(metrics.normalizedForecast) && (metrics.precipChance ?? 0) >= rainConditionThreshold) {
+    return { condition: "Stormy", reason: "hazard", iconForecast: "thunderstorm" };
+  }
+
+  if (/freezing rain|ice|sleet/.test(metrics.normalizedForecast)) {
+    return { condition: "Icy", reason: "hazard", iconForecast: "freezing rain" };
+  }
+
+  if (/heavy snow|blizzard/.test(metrics.normalizedForecast)) {
+    return { condition: "Heavy snow", reason: "hazard", iconForecast: "snow" };
+  }
+
+  if (/dense fog/.test(metrics.normalizedForecast)) {
+    return { condition: "Dense fog", reason: "hazard", iconForecast: "fog" };
+  }
+
+  if (typeof metrics.windMph === "number" && metrics.windMph >= 40) {
+    return { condition: "High wind", reason: "hazard", iconForecast: metrics.forecast };
+  }
+
+  return null;
+}
+
+function precipitationWeatherRule(metrics) {
+  if (!(metrics.hasWetForecast || metrics.hasSnowForecast || metrics.hasIceForecast)) {
+    return null;
+  }
+
+  if (typeof metrics.precipChance !== "number") {
+    return { condition: metrics.forecast, reason: "precipitation", iconForecast: metrics.forecast };
+  }
+
+  if (metrics.precipChance < rainConditionThreshold) {
+    return { condition: "Mostly dry", reason: "low-precipitation", iconForecast: skyFallbackForecast(metrics) };
+  }
+
+  if (metrics.hasIceForecast) {
+    return { condition: "Icy mix", reason: "precipitation", iconForecast: "freezing rain" };
+  }
+
+  if (metrics.hasSnowForecast) {
+    return {
+      condition: metrics.precipChance >= likelyRainThreshold ? "Snowy" : "Chance of snow",
+      reason: "precipitation",
+      iconForecast: "snow"
+    };
+  }
+
+  if (/thunder|storm/.test(metrics.normalizedForecast)) {
+    return {
+      condition: metrics.precipChance >= likelyRainThreshold ? "Stormy" : "Possible storms",
+      reason: "precipitation",
+      iconForecast: "thunderstorm"
+    };
+  }
+
+  return {
+    condition: metrics.precipChance >= likelyRainThreshold ? "Rainy" : "Chance of showers",
+    reason: "precipitation",
+    iconForecast: "rain showers"
+  };
+}
+
+function temperatureWeatherRule(metrics) {
+  if (typeof metrics.temperature !== "number") {
+    return null;
+  }
+
+  const humid = isHumid(metrics);
+  const windy = typeof metrics.windMph === "number" && metrics.windMph >= breezyThreshold;
+
+  if (metrics.temperature >= 95) {
+    return { condition: humid ? "Very hot and humid" : "Very hot", reason: "temperature", iconForecast: metrics.forecast };
+  }
+
+  if (metrics.temperature >= 88) {
+    return { condition: humid ? "Hot and humid" : "Hot", reason: "temperature", iconForecast: metrics.forecast };
+  }
+
+  if (metrics.temperature <= 32) {
+    return { condition: windy ? "Freezing and windy" : "Freezing", reason: "temperature", iconForecast: metrics.forecast };
+  }
+
+  if (metrics.temperature <= 45) {
+    return { condition: windy ? "Cold and windy" : "Cold", reason: "temperature", iconForecast: metrics.forecast };
+  }
+
+  return null;
+}
+
+function humidityWeatherRule(metrics) {
+  if (isHumid(metrics)) {
+    return { condition: "Humid", reason: "humidity", iconForecast: metrics.forecast };
+  }
+
+  if (typeof metrics.dewPoint === "number" && metrics.dewPoint >= 65) {
+    return { condition: "Muggy", reason: "humidity", iconForecast: metrics.forecast };
+  }
+
+  return null;
+}
+
+function windWeatherRule(metrics) {
+  if (typeof metrics.windMph !== "number") {
+    return null;
+  }
+
+  if (metrics.windMph >= windyThreshold) {
+    return { condition: "Windy", reason: "wind", iconForecast: metrics.forecast };
+  }
+
+  if (metrics.windMph >= breezyThreshold) {
+    return { condition: "Breezy", reason: "wind", iconForecast: metrics.forecast };
+  }
+
+  return null;
+}
+
+function skyWeatherRule(metrics) {
+  if (metrics.hasFogForecast) {
+    return { condition: "Foggy", reason: "sky", iconForecast: "fog" };
+  }
+
+  if (/overcast|cloudy/.test(metrics.normalizedForecast)) {
+    return { condition: "Cloudy", reason: "sky", iconForecast: "cloudy" };
+  }
+
+  if (/partly|mostly clear|mostly sunny/.test(metrics.normalizedForecast)) {
+    return { condition: metrics.forecast, reason: "sky", iconForecast: metrics.forecast };
+  }
+
+  if (/sunny|clear/.test(metrics.normalizedForecast)) {
+    return { condition: metrics.forecast, reason: "sky", iconForecast: metrics.forecast };
+  }
+
+  return { condition: metrics.forecast, reason: "sky", iconForecast: metrics.forecast };
+}
+
+function buildWeatherNote(part, rule, metrics) {
   const partPhrases = {
     morning: "A practical look at how the day starts.",
     afternoon: "The warmest and brightest part of the day.",
     evening: "A quick read on plans after work.",
     overnight: "What to expect while the night settles in."
   };
+  const detail = weatherDetailForRule(rule, metrics);
 
-  return `${partPhrases[part.key]} ${condition}.${rainPhrase}`.replace(/\.\./g, ".").trim();
+  return `${partPhrases[part.key]} ${detail}`.trim();
+}
+
+function weatherDetailForRule(rule, metrics) {
+  const rainText = typeof metrics.precipChance === "number" ? `${Math.round(metrics.precipChance)}%` : null;
+  const tempText = typeof metrics.temperature === "number" ? `${Math.round(metrics.temperature)}°F` : null;
+  const humidityText = typeof metrics.humidity === "number" ? `${Math.round(metrics.humidity)}% humidity` : null;
+  const windText = typeof metrics.windMph === "number" ? `${Math.round(metrics.windMph)} mph wind` : null;
+
+  if (rule.reason === "hazard") {
+    return `${rule.condition} is the main thing to watch.${rainText ? ` Rain chance is ${rainText}.` : ""}`;
+  }
+
+  if (rule.reason === "precipitation") {
+    const subject = rule.condition === "Rainy"
+      ? "Rain"
+      : rule.condition === "Snowy"
+        ? "Snow"
+        : rule.condition === "Stormy"
+          ? "Storms"
+          : rule.condition;
+    return `${subject} is the main story${rainText ? ` with a ${rainText} precipitation chance` : ""}.`;
+  }
+
+  if (rule.reason === "low-precipitation") {
+    return `${metrics.forecast} is in the raw forecast, but the rain chance is only ${rainText}.`;
+  }
+
+  if (rule.reason === "temperature") {
+    return `${rule.condition} conditions lead the forecast${tempText ? ` around ${tempText}` : ""}.`;
+  }
+
+  if (rule.reason === "humidity") {
+    return `The air may feel ${rule.condition.toLowerCase()}${humidityText ? ` with ${humidityText}` : ""}.`;
+  }
+
+  if (rule.reason === "wind") {
+    return `${rule.condition} conditions stand out${windText ? ` with about ${windText}` : ""}.`;
+  }
+
+  return `${rule.condition}.`;
+}
+
+function isHumid(metrics) {
+  if (typeof metrics.dewPoint === "number" && metrics.dewPoint >= 70) {
+    return true;
+  }
+
+  return typeof metrics.temperature === "number"
+    && typeof metrics.humidity === "number"
+    && metrics.temperature >= 75
+    && metrics.humidity >= 70;
+}
+
+function skyFallbackForecast(metrics) {
+  if (/cloud|overcast|fog|mist/.test(metrics.normalizedForecast)) {
+    return metrics.forecast;
+  }
+
+  return /clear|sunny/.test(metrics.normalizedForecast) ? metrics.forecast : "partly cloudy";
+}
+
+function parseWindMph(speed) {
+  const matches = String(speed || "").match(/\d+/g);
+
+  if (!matches) {
+    return null;
+  }
+
+  return Math.max(...matches.map(Number));
+}
+
+function celsiusToFahrenheit(celsius) {
+  if (typeof celsius !== "number") {
+    return null;
+  }
+
+  return (celsius * 9) / 5 + 32;
 }
 
 function renderForecast(cards) {
@@ -659,7 +942,7 @@ function iconForForecast(forecast = "", partKey) {
     return "moon";
   }
 
-  if (/thunder|storm|rain|showers|drizzle/.test(normalized)) {
+  if (/thunder|storm|rain|showers|drizzle|snow|sleet|ice|freezing/.test(normalized)) {
     return partKey === "overnight" ? "moon-cloud" : "partly";
   }
 
