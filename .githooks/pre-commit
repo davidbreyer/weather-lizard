@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+SCRIPT="$REPO_ROOT/scripts/update-release.ps1"
+
+if command -v pwsh >/dev/null 2>&1; then
+  pwsh -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT"
+elif command -v powershell.exe >/dev/null 2>&1; then
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT"
+elif command -v powershell >/dev/null 2>&1; then
+  powershell -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT"
+else
+  echo "PowerShell is required to update the Weather Lizard release stamp." >&2
+  exit 1
+fi
+
+git add -- index.html script.js
