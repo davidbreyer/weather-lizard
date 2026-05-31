@@ -25,6 +25,8 @@ const dayParts = [
   { key: "overnight", title: "Overnight", label: "12 AM - 6 AM", start: 0, end: 6, midpoint: 3 }
 ];
 
+const rainConditionThreshold = 40;
+
 const defaultLocation = {
   label: "Cincinnati, OH 45202",
   latitude: 39.1031,
@@ -195,6 +197,7 @@ function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day) {
   const humidityValues = source
     .map((period) => period.relativeHumidity?.value)
     .filter((value) => typeof value === "number");
+  const condition = conditionForForecast(representative.shortForecast, precipValues);
 
   return {
     ...part,
@@ -202,9 +205,9 @@ function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day) {
       temps.length > 0 ? Math.round(average(temps)) : representative.temperature,
       representative.temperatureUnit
     ),
-    condition: representative.shortForecast || "Forecast unavailable",
-    note: buildDayPartNote(part, representative, precipValues),
-    icon: iconForForecast(representative.shortForecast, part.key),
+    condition,
+    note: buildDayPartNote(part, condition, precipValues),
+    icon: iconForForecast(condition, part.key),
     stats: [
       ["drop", "Rain Chance", formatForecastPercent(maxOrNull(precipValues))],
       ["wind", "Wind", formatForecastWind(representative.windSpeed, representative.windDirection)],
@@ -215,6 +218,7 @@ function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day) {
 
 function buildUnavailableDayPartCard(part, day, anchorDate) {
   const isPassed = day === "today" && isDayPartPassed(part, anchorDate);
+  const unavailableWindow = part.key === "overnight" ? "upcoming overnight window" : `${day} window`;
   return {
     ...part,
     temperature: "--",
@@ -222,7 +226,7 @@ function buildUnavailableDayPartCard(part, day, anchorDate) {
     state: isPassed ? "passed" : "unavailable",
     note: isPassed
       ? `${part.title} has already passed for today. Check Tomorrow for the next ${part.title.toLowerCase()} forecast.`
-      : `The National Weather Service hourly feed did not include this ${day} window yet.`,
+      : `The National Weather Service hourly feed did not include this ${unavailableWindow} yet.`,
     icon: part.key === "overnight" ? "moon" : part.key === "evening" ? "moon-cloud" : "partly",
     stats: [
       ["drop", "Rain Chance", "--"],
@@ -251,8 +255,9 @@ function getForecastAnchorDate(periods, day) {
 
 function isPeriodInDayPart(period, part, anchorDate, day) {
   const date = new Date(period.startTime);
+  const targetDate = getDayPartDate(anchorDate, part);
 
-  if (!isSameCalendarDay(date, anchorDate)) {
+  if (!isSameCalendarDay(date, targetDate)) {
     return false;
   }
 
@@ -273,8 +278,9 @@ function isPeriodInDayPart(period, part, anchorDate, day) {
 
 function isDayPartPassed(part, anchorDate) {
   const now = new Date();
+  const targetDate = getDayPartDate(anchorDate, part);
 
-  if (!isSameCalendarDay(now, anchorDate)) {
+  if (!isSameCalendarDay(now, targetDate)) {
     return false;
   }
 
@@ -283,6 +289,16 @@ function isDayPartPassed(part, anchorDate) {
 
 function shouldDefaultToTomorrow() {
   return new Date().getHours() >= 21;
+}
+
+function getDayPartDate(anchorDate, part) {
+  const targetDate = new Date(anchorDate);
+
+  if (part.key === "overnight") {
+    targetDate.setDate(targetDate.getDate() + 1);
+  }
+
+  return targetDate;
 }
 
 function startOfCurrentHour(date) {
@@ -310,10 +326,21 @@ function findNextPeriodForPart(periods, part) {
   });
 }
 
-function buildDayPartNote(part, period, precipValues) {
-  const forecast = period.shortForecast || "Forecast unavailable";
+function conditionForForecast(forecast, precipValues) {
   const rain = maxOrNull(precipValues);
-  const rainPhrase = typeof rain === "number" && rain >= 30
+  const normalized = String(forecast || "").toLowerCase();
+  const hasWetCondition = /drizzle|rain|shower|storm|thunder/.test(normalized);
+
+  if (hasWetCondition && typeof rain === "number" && rain < rainConditionThreshold) {
+    return "Mostly dry";
+  }
+
+  return forecast || "Forecast unavailable";
+}
+
+function buildDayPartNote(part, condition, precipValues) {
+  const rain = maxOrNull(precipValues);
+  const rainPhrase = typeof rain === "number" && rain >= rainConditionThreshold
     ? ` Keep an eye on a ${Math.round(rain)}% precipitation chance.`
     : "";
 
@@ -324,7 +351,7 @@ function buildDayPartNote(part, period, precipValues) {
     overnight: "What to expect while the night settles in."
   };
 
-  return `${partPhrases[part.key]} ${forecast}.${rainPhrase}`.replace(/\.\./g, ".").trim();
+  return `${partPhrases[part.key]} ${condition}.${rainPhrase}`.replace(/\.\./g, ".").trim();
 }
 
 function renderForecast(cards) {
