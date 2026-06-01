@@ -15,7 +15,7 @@ const elements = {
   releaseBadge: document.querySelector("#releaseBadge")
 };
 
-const appRelease = "20260531-0843";
+const appRelease = "20260601-1232";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
@@ -108,16 +108,21 @@ async function loadWeatherForCoordinates({ latitude, longitude, label, source })
     throw new Error("No hourly forecast endpoint was returned by the National Weather Service.");
   }
 
-  setStatus("Loading hourly forecast, current conditions, and alerts...");
+  setStatus("Loading hourly forecast, feels-like temperature, current conditions, and alerts...");
 
-  const [stationUrl, hourlyForecast, alertsData] = await Promise.all([
+  const gridDataRequest = pointProperties.forecastGridData
+    ? fetchJson(pointProperties.forecastGridData).catch(() => null)
+    : Promise.resolve(null);
+
+  const [stationUrl, hourlyForecast, alertsData, gridData] = await Promise.all([
     getNearestStationUrl(pointProperties.observationStations),
     fetchJson(pointProperties.forecastHourly),
-    fetchJson(`https://api.weather.gov/alerts/active?point=${latitude.toFixed(4)},${longitude.toFixed(4)}`)
+    fetchJson(`https://api.weather.gov/alerts/active?point=${latitude.toFixed(4)},${longitude.toFixed(4)}`),
+    gridDataRequest
   ]);
 
   const observation = await fetchJson(`${stationUrl}/observations/latest`);
-  latestWeatherData = { hourlyForecast, observation, nearbyLocation, stationUrl };
+  latestWeatherData = { hourlyForecast, observation, nearbyLocation, stationUrl, gridData };
   const context = buildWeatherContext(latestWeatherData, selectedDay);
 
   elements.locationLabel.textContent = nearbyLocation;
@@ -159,7 +164,7 @@ function updateDayTabs() {
 }
 
 function buildWeatherContext(weatherData, day) {
-  const { hourlyForecast, observation, nearbyLocation, stationUrl } = weatherData;
+  const { hourlyForecast, observation, nearbyLocation, stationUrl, gridData } = weatherData;
   const hourlyForecastData = hourlyForecast;
   const observationData = observation;
   const periods = hourlyForecastData.properties?.periods ?? [];
@@ -175,7 +180,7 @@ function buildWeatherContext(weatherData, day) {
   const currentSummary = observationProperties.textDescription || "Current conditions";
 
   return {
-    dayPartCards: dayParts.map((part) => buildDayPartCard(part, periods, anchorDate, currentHumidity, day)),
+    dayPartCards: dayParts.map((part) => buildDayPartCard(part, periods, anchorDate, currentHumidity, day, gridData)),
     currentConditions: `Right now: ${formatObservedTemperature(observationProperties.temperature?.value)} - ${currentSummary} - ${nearbyLocation}`,
     bottomStats: [
       ["target", "Location", nearbyLocation],
@@ -187,7 +192,7 @@ function buildWeatherContext(weatherData, day) {
   };
 }
 
-function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day) {
+function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day, gridData) {
   const candidates = periods.filter((period) => isPeriodInDayPart(period, part, anchorDate, day));
 
   if (candidates.length === 0) {
@@ -203,22 +208,32 @@ function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day) {
   const humidityValues = source
     .map((period) => period.relativeHumidity?.value)
     .filter((value) => typeof value === "number");
+  const averageTemperature = temps.length > 0 ? Math.round(average(temps)) : representative.temperature;
+  const apparentTemperature = averageApparentTemperature(source, gridData);
   const description = describeWeather(source, representative, part, fallbackHumidity);
+  const stats = [
+    ["drop", "Rain Chance", formatForecastPercent(maxOrNull(precipValues))]
+  ];
+
+  if (shouldShowFeelsLike(averageTemperature, apparentTemperature)) {
+    stats.push(["thermometer", "Feels Like", formatForecastTemperature(apparentTemperature, representative.temperatureUnit)]);
+  }
+
+  stats.push(
+    ["wind", "Wind", formatForecastWind(representative.windSpeed, representative.windDirection)],
+    ["drop", "Humidity", formatPercent(maxOrNull(humidityValues) ?? fallbackHumidity)]
+  );
 
   return {
     ...part,
     temperature: formatForecastTemperature(
-      temps.length > 0 ? Math.round(average(temps)) : representative.temperature,
+      averageTemperature,
       representative.temperatureUnit
     ),
     condition: description.condition,
     note: description.note,
     icon: description.icon,
-    stats: [
-      ["drop", "Rain Chance", formatForecastPercent(maxOrNull(precipValues))],
-      ["wind", "Wind", formatForecastWind(representative.windSpeed, representative.windDirection)],
-      ["drop", "Humidity", formatPercent(maxOrNull(humidityValues) ?? fallbackHumidity)]
-    ]
+    stats
   };
 }
 
@@ -330,6 +345,76 @@ function findNextPeriodForPart(periods, part) {
     const hour = new Date(period.startTime).getHours();
     return hour >= part.start && hour < part.end;
   });
+}
+
+function averageApparentTemperature(periods, gridData) {
+  const apparentValues = periods
+    .map((period) => apparentTemperatureForPeriod(period, gridData))
+    .filter((value) => typeof value === "number");
+
+  return apparentValues.length > 0 ? Math.round(average(apparentValues)) : null;
+}
+
+function apparentTemperatureForPeriod(period, gridData) {
+  return gridTemperatureForPeriod(gridData, "apparentTemperature", period)
+    ?? gridTemperatureForPeriod(gridData, "heatIndex", period)
+    ?? gridTemperatureForPeriod(gridData, "windChill", period);
+}
+
+function gridTemperatureForPeriod(gridData, propertyName, period) {
+  const values = gridData?.properties?.[propertyName]?.values ?? [];
+  const periodTime = new Date(period.startTime).getTime();
+  const match = values.find((entry) => validTimeContains(entry.validTime, periodTime));
+
+  if (typeof match?.value !== "number") {
+    return null;
+  }
+
+  return Math.round(celsiusToFahrenheit(match.value));
+}
+
+function validTimeContains(validTime, timestamp) {
+  if (!validTime || Number.isNaN(timestamp)) {
+    return false;
+  }
+
+  const [startText, endOrDurationText] = String(validTime).split("/");
+  const start = new Date(startText).getTime();
+
+  if (Number.isNaN(start)) {
+    return false;
+  }
+
+  if (!endOrDurationText) {
+    return timestamp === start;
+  }
+
+  const end = endOrDurationText.startsWith("P")
+    ? start + parseIsoDurationMs(endOrDurationText)
+    : new Date(endOrDurationText).getTime();
+
+  if (Number.isNaN(end)) {
+    return false;
+  }
+
+  return timestamp >= start && timestamp < end;
+}
+
+function parseIsoDurationMs(duration) {
+  const match = String(duration).match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/);
+
+  if (!match) {
+    return 0;
+  }
+
+  const [, days = 0, hours = 0, minutes = 0, seconds = 0] = match.map((value) => Number(value || 0));
+  return (((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000;
+}
+
+function shouldShowFeelsLike(temperature, apparentTemperature) {
+  return typeof temperature === "number"
+    && typeof apparentTemperature === "number"
+    && Math.abs(apparentTemperature - temperature) >= 3;
 }
 
 function describeWeather(periods, representative, part, fallbackHumidity) {
@@ -994,6 +1079,7 @@ function weatherIcon(name) {
 const icons = {
   pin: `<svg width="30" height="40" viewBox="0 0 30 40" fill="none" aria-hidden="true"><path d="M15 38S3 24.4 3 15A12 12 0 0 1 27 15c0 9.4-12 23-12 23Z" stroke="currentColor" stroke-width="3"/><circle cx="15" cy="15" r="4" stroke="currentColor" stroke-width="3"/></svg>`,
   target: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-linecap="round" stroke-width="2"/></svg>`,
+  thermometer: `<svg width="24" height="30" viewBox="0 0 24 30" fill="none" aria-hidden="true"><path d="M9 17.5V5a3 3 0 0 1 6 0v12.5a6 6 0 1 1-6 0Z" stroke="currentColor" stroke-width="2.2"/><path d="M12 8v12" stroke="currentColor" stroke-linecap="round" stroke-width="2.2"/><circle cx="12" cy="23" r="2.5" fill="currentColor"/></svg>`,
   drop: `<svg width="27" height="32" viewBox="0 0 28 34" fill="none" aria-hidden="true"><path d="M14 2S4 15 4 22a10 10 0 0 0 20 0C24 15 14 2 14 2Z" stroke="currentColor" stroke-width="2.2"/><path d="M10 25c.9 2.2 2.5 3.3 5 3.3" stroke="currentColor" stroke-linecap="round" stroke-width="2"/></svg>`,
   wind: `<svg width="31" height="27" viewBox="0 0 34 28" fill="none" aria-hidden="true"><path d="M2 8h19c4 0 6-2 6-5 0-2-1.4-3-3.2-3-1.7 0-3 1.1-3.4 2.7M2 15h28M2 22h17c3.4 0 5 1.6 5 4 0 1.8-1.3 3-3 3-1.5 0-2.7-.9-3.2-2.1" stroke="currentColor" stroke-linecap="round" stroke-width="2.3"/></svg>`,
   pressure: `<svg width="48" height="48" viewBox="0 0 58 58" fill="none" aria-hidden="true"><path d="M8 38a22 22 0 1 1 42 0" stroke="#21a044" stroke-width="3"/><path d="M29 38 41 22" stroke="#21a044" stroke-linecap="round" stroke-width="3"/><circle cx="29" cy="38" r="4" fill="#21a044"/><path d="M14 39h6M38 39h6M29 15v6M17 24l5 3M41 24l-5 3" stroke="#21a044" stroke-linecap="round" stroke-width="3"/></svg>`,
