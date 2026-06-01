@@ -15,7 +15,7 @@ const elements = {
   releaseBadge: document.querySelector("#releaseBadge")
 };
 
-const appRelease = "20260601-1232";
+const appRelease = "20260601-1433";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
