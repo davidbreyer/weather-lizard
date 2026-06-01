@@ -15,7 +15,7 @@ const elements = {
   releaseBadge: document.querySelector("#releaseBadge")
 };
 
-const appRelease = "20260601-1433";
+const appRelease = "20260601-1531";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
@@ -531,7 +531,7 @@ function precipitationWeatherRule(metrics) {
   }
 
   if (metrics.precipChance < rainConditionThreshold) {
-    return { condition: "Mostly dry", reason: "low-precipitation", iconForecast: skyFallbackForecast(metrics) };
+    return lowPrecipitationWeatherRule(metrics);
   }
 
   if (metrics.hasIceForecast) {
@@ -559,6 +559,26 @@ function precipitationWeatherRule(metrics) {
     reason: "precipitation",
     iconForecast: "rain showers"
   };
+}
+
+function lowPrecipitationWeatherRule(metrics) {
+  if (/drizzle/.test(metrics.normalizedForecast)) {
+    return { condition: "Spotty drizzle", reason: "low-precipitation", iconForecast: "drizzle" };
+  }
+
+  if (/shower/.test(metrics.normalizedForecast)) {
+    return { condition: "Spotty showers", reason: "low-precipitation", iconForecast: "rain showers" };
+  }
+
+  if (/thunder|storm/.test(metrics.normalizedForecast)) {
+    return { condition: "Isolated storms", reason: "low-precipitation", iconForecast: "thunderstorm" };
+  }
+
+  if (/rain/.test(metrics.normalizedForecast)) {
+    return { condition: "Spotty rain", reason: "low-precipitation", iconForecast: "rain" };
+  }
+
+  return { condition: "Mostly dry", reason: "low-precipitation", iconForecast: skyFallbackForecast(metrics) };
 }
 
 function temperatureWeatherRule(metrics) {
@@ -670,7 +690,11 @@ function weatherDetailForRule(rule, metrics) {
   }
 
   if (rule.reason === "low-precipitation") {
-    return `${metrics.forecast} is in the raw forecast, but the rain chance is only ${rainText}.`;
+    if (rule.condition === "Mostly dry") {
+      return `${metrics.forecast} is in the raw forecast, but the rain chance is only ${rainText}.`;
+    }
+
+    return `${rule.condition} may still affect outdoor plans, even with only a ${rainText} rain chance.`;
   }
 
   if (rule.reason === "temperature") {
