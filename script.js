@@ -16,7 +16,7 @@ const elements = {
   releaseBadge: document.querySelector("#releaseBadge")
 };
 
-const appRelease = "20260603-1142";
+const appRelease = "20260603-1647";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
@@ -865,10 +865,22 @@ function scrollHourlyDetailsIntoView() {
     return;
   }
 
+  scrollElementIntoView(elements.hourlyDetails, "start");
+}
+
+function scrollForecastTileIntoView(key) {
+  const tile = elements.forecastGrid.querySelector(`[data-part="${key}"]`);
+
+  if (tile) {
+    scrollElementIntoView(tile, "center");
+  }
+}
+
+function scrollElementIntoView(element, block) {
   const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  elements.hourlyDetails.scrollIntoView({
+  element.scrollIntoView({
     behavior: prefersReducedMotion ? "auto" : "smooth",
-    block: "start"
+    block
   });
 }
 
@@ -910,8 +922,10 @@ function renderHourlyDetails() {
   `;
 
   elements.hourlyDetails.querySelector(".hourly-close").addEventListener("click", () => {
+    const closingKey = activeDetailKey;
     activeDetailKey = null;
     renderForecast(currentDayPartCards);
+    scrollForecastTileIntoView(closingKey);
   });
 }
 
