@@ -354,6 +354,10 @@ a:focus-visible {
   overflow: hidden;
   isolation: isolate;
   border-top: 1px solid rgba(255, 255, 255, 0.62);
+  cursor: pointer;
+  transition:
+    box-shadow 180ms ease,
+    transform 180ms ease;
 }
 
 .quad:nth-child(odd) {
@@ -371,6 +375,27 @@ a:focus-visible {
 .quad::before {
   inset: 0;
   background: var(--sky);
+}
+
+.quad:hover {
+  box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.08);
+}
+
+.quad[aria-disabled="true"] {
+  cursor: default;
+}
+
+.quad[aria-disabled="true"]:hover {
+  box-shadow: none;
+}
+
+.quad:focus-visible {
+  outline: 3px solid rgba(23, 105, 224, 0.34);
+  outline-offset: -6px;
+}
+
+.quad--active {
+  box-shadow: inset 0 0 0 3px rgba(23, 105, 224, 0.44);
 }
 
 .quad::after {
@@ -536,6 +561,114 @@ a:focus-visible {
   font-size: 15px;
   line-height: 1.2;
   font-weight: 850;
+}
+
+.hourly-details {
+  padding: 22px 30px 28px;
+  border-top: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(242, 247, 255, 0.88));
+}
+
+.hourly-details-header {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.hourly-details h2,
+.hourly-details p {
+  margin: 0;
+}
+
+.hourly-details h2 {
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.hourly-details p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.hourly-close {
+  min-height: 34px;
+  border: 1px solid rgba(23, 105, 224, 0.2);
+  border-radius: 999px;
+  padding: 0 13px;
+  color: var(--blue);
+  background: rgba(255, 255, 255, 0.76);
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.hourly-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hour-card {
+  min-height: 158px;
+  padding: 15px;
+  border: 1px solid rgba(10, 28, 70, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 14px 28px rgba(8, 23, 58, 0.08);
+}
+
+.hour-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.hour-card-top strong {
+  font-size: 15px;
+}
+
+.hour-icon {
+  width: 44px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+}
+
+.hour-icon svg {
+  width: 48px;
+  height: auto;
+}
+
+.hour-temp {
+  margin-top: 8px;
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.hour-condition {
+  margin-top: 7px;
+  min-height: 34px;
+  color: #233352;
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.hour-metrics {
+  margin-top: 10px;
+  display: flex;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
 }
 
 .bottom-strip {
@@ -764,6 +897,32 @@ svg {
   .forecast-grid {
     grid-template-columns: 1fr;
     min-height: 0;
+  }
+
+  .hourly-details {
+    padding: 18px;
+  }
+
+  .hourly-details-header {
+    align-items: flex-start;
+  }
+
+  .hourly-details h2 {
+    font-size: 18px;
+  }
+
+  .hourly-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .hour-card {
+    min-height: 146px;
+    padding: 12px;
+  }
+
+  .hour-temp {
+    font-size: 29px;
   }
 
   .quad {

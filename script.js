@@ -11,11 +11,12 @@ const elements = {
   alertsToggle: document.querySelector("#alertsToggle"),
   alertsList: document.querySelector("#alertsList"),
   forecastGrid: document.querySelector("#forecastGrid"),
+  hourlyDetails: document.querySelector("#hourlyDetails"),
   bottomStrip: document.querySelector("#bottomStrip"),
   releaseBadge: document.querySelector("#releaseBadge")
 };
 
-const appRelease = "20260601-1531";
+const appRelease = "20260603-1123";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
@@ -43,6 +44,8 @@ let hasLoadedWeather = false;
 let activeLocationSource = "default";
 let selectedDay = shouldDefaultToTomorrow() ? "tomorrow" : "today";
 let latestWeatherData = null;
+let activeDetailKey = null;
+let currentDayPartCards = [];
 
 elements.refreshButton.addEventListener("click", loadWeatherForCurrentLocation);
 elements.alertsToggle.addEventListener("click", toggleAlerts);
@@ -144,6 +147,7 @@ async function loadWeatherForCoordinates({ latitude, longitude, label, source })
 
 function setSelectedDay(day) {
   selectedDay = day;
+  activeDetailKey = null;
   updateDayTabs();
 
   if (!latestWeatherData) {
@@ -233,7 +237,8 @@ function buildDayPartCard(part, periods, anchorDate, fallbackHumidity, day, grid
     condition: description.condition,
     note: description.note,
     icon: description.icon,
-    stats
+    stats,
+    hourlyDetails: source.map((period) => buildHourlyDetail(period, gridData))
   };
 }
 
@@ -253,7 +258,8 @@ function buildUnavailableDayPartCard(part, day, anchorDate) {
       ["drop", "Rain Chance", "--"],
       ["wind", "Wind", "--"],
       ["drop", "Humidity", "--"]
-    ]
+    ],
+    hourlyDetails: []
   };
 }
 
@@ -415,6 +421,38 @@ function shouldShowFeelsLike(temperature, apparentTemperature) {
   return typeof temperature === "number"
     && typeof apparentTemperature === "number"
     && Math.abs(apparentTemperature - temperature) >= 3;
+}
+
+function buildHourlyDetail(period, gridData) {
+  const apparentTemperature = apparentTemperatureForPeriod(period, gridData);
+  const feelsLike = shouldShowFeelsLike(period.temperature, apparentTemperature)
+    ? formatForecastTemperature(apparentTemperature, period.temperatureUnit)
+    : null;
+
+  return {
+    time: formatHourLabel(period.startTime),
+    temperature: formatForecastTemperature(period.temperature, period.temperatureUnit),
+    feelsLike,
+    condition: conditionForHourlyPeriod(period),
+    icon: iconForForecast(period.shortForecast, new Date(period.startTime).getHours() < 6 ? "overnight" : "day"),
+    rainChance: formatForecastPercent(period.probabilityOfPrecipitation?.value),
+    wind: formatForecastWind(period.windSpeed, period.windDirection)
+  };
+}
+
+function conditionForHourlyPeriod(period) {
+  const precip = period.probabilityOfPrecipitation?.value;
+  const forecast = period.shortForecast || "Forecast unavailable";
+  const normalized = forecast.toLowerCase();
+
+  if (typeof precip === "number" && precip < rainConditionThreshold && /drizzle|rain|shower|storm|thunder/.test(normalized)) {
+    return lowPrecipitationWeatherRule({
+      forecast,
+      normalizedForecast: normalized
+    }).condition;
+  }
+
+  return forecast;
 }
 
 function describeWeather(periods, representative, part, fallbackHumidity) {
@@ -750,8 +788,18 @@ function celsiusToFahrenheit(celsius) {
 }
 
 function renderForecast(cards) {
+  currentDayPartCards = cards;
+
+  if (activeDetailKey && !cards.some((card) => card.key === activeDetailKey && card.hourlyDetails?.length > 0)) {
+    activeDetailKey = null;
+  }
+
   elements.forecastGrid.innerHTML = cards.map((card) => `
-    <article class="quad ${card.key}${card.state ? ` quad--${card.state}` : ""}">
+    <article
+      class="quad ${card.key}${card.state ? ` quad--${card.state}` : ""}${card.key === activeDetailKey ? " quad--active" : ""}"
+      data-part="${escapeHtml(card.key)}"
+      ${tileInteractionAttributes(card)}
+    >
       <div class="quad-content">
         <div class="time">
           <h2>${escapeHtml(card.title)}</h2>
@@ -767,6 +815,87 @@ function renderForecast(cards) {
       </div>
     </article>
   `).join("");
+  bindForecastTiles();
+  renderHourlyDetails();
+}
+
+function tileInteractionAttributes(card) {
+  if (!card.hourlyDetails?.length) {
+    return 'aria-disabled="true"';
+  }
+
+  return [
+    'role="button"',
+    'tabindex="0"',
+    `aria-expanded="${card.key === activeDetailKey}"`,
+    `aria-label="${escapeHtml(`${card.title} hourly forecast`)}"`
+  ].join(" ");
+}
+
+function bindForecastTiles() {
+  elements.forecastGrid.querySelectorAll("[data-part]").forEach((tile) => {
+    const card = currentDayPartCards.find((candidate) => candidate.key === tile.dataset.part);
+
+    if (!card?.hourlyDetails?.length) {
+      return;
+    }
+
+    tile.addEventListener("click", () => setActiveDetailKey(card.key));
+    tile.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        setActiveDetailKey(card.key);
+      }
+    });
+  });
+}
+
+function setActiveDetailKey(key) {
+  activeDetailKey = activeDetailKey === key ? null : key;
+  renderForecast(currentDayPartCards);
+}
+
+function renderHourlyDetails() {
+  const card = currentDayPartCards.find((candidate) => candidate.key === activeDetailKey);
+
+  if (!card?.hourlyDetails?.length) {
+    elements.hourlyDetails.classList.add("hidden");
+    elements.hourlyDetails.innerHTML = "";
+    return;
+  }
+
+  elements.hourlyDetails.classList.remove("hidden");
+  elements.hourlyDetails.innerHTML = `
+    <div class="hourly-details-header">
+      <div>
+        <h2>${escapeHtml(card.title)} by hour</h2>
+        <p>${escapeHtml(card.label)}</p>
+      </div>
+      <button class="hourly-close" type="button" aria-label="Close hourly forecast">Close</button>
+    </div>
+    <div class="hourly-grid">
+      ${card.hourlyDetails.map((hour) => `
+        <article class="hour-card">
+          <div class="hour-card-top">
+            <strong>${escapeHtml(hour.time)}</strong>
+            <span class="hour-icon">${weatherIcon(hour.icon)}</span>
+          </div>
+          <div class="hour-temp">${escapeHtml(hour.temperature)}</div>
+          <div class="hour-condition">${escapeHtml(hour.condition)}</div>
+          <div class="hour-metrics">
+            ${hour.feelsLike ? `<span>Feels ${escapeHtml(hour.feelsLike)}</span>` : ""}
+            <span>Rain ${escapeHtml(hour.rainChance)}</span>
+            <span>${escapeHtml(hour.wind)}</span>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+
+  elements.hourlyDetails.querySelector(".hourly-close").addEventListener("click", () => {
+    activeDetailKey = null;
+    renderForecast(currentDayPartCards);
+  });
 }
 
 function renderBottom(stats) {
@@ -957,6 +1086,18 @@ function formatNearbyLocation(location) {
   const city = location.city || "Your area";
   const state = location.state ? `, ${location.state}` : "";
   return `${city}${state}`;
+}
+
+function formatHourLabel(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric"
+  }).format(date);
 }
 
 function formatForecastTemperature(value, unit) {
