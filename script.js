@@ -16,7 +16,7 @@ const elements = {
   releaseBadge: document.querySelector("#releaseBadge")
 };
 
-const appRelease = "20260603-1647";
+const appRelease = "20260605-2026";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
@@ -42,7 +42,7 @@ const defaultLocation = {
 
 let hasLoadedWeather = false;
 let activeLocationSource = "default";
-let selectedDay = shouldDefaultToTomorrow() ? "tomorrow" : "today";
+let selectedDay = "today";
 let latestWeatherData = null;
 let activeDetailKey = null;
 let currentDayPartCards = [];
@@ -312,10 +312,6 @@ function isDayPartPassed(part, anchorDate) {
   }
 
   return now.getHours() >= part.end;
-}
-
-function shouldDefaultToTomorrow() {
-  return new Date().getHours() >= 21;
 }
 
 function getDayPartDate(anchorDate, part) {
