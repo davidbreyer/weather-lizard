@@ -762,6 +762,27 @@ a:focus-visible {
   stroke-width: 2;
 }
 
+.hail-mark {
+  fill: rgba(226, 246, 255, 0.92);
+  stroke: #1784da;
+  stroke-width: 2;
+}
+
+.fog-line {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.9);
+}
+
+.haze-line {
+  fill: none;
+  stroke: rgba(239, 188, 94, 0.72);
+}
+
+.wind-line {
+  fill: none;
+  stroke: #1784da;
+}
+
 .lightning {
   fill: #ffc227;
   stroke: rgba(122, 74, 0, 0.24);
@@ -791,6 +812,17 @@ a:focus-visible {
 .overnight .ice-mark {
   fill: rgba(210, 240, 255, 0.84);
   stroke: #c7ecff;
+}
+
+.overnight .hail-mark {
+  fill: rgba(235, 248, 255, 0.9);
+  stroke: #c7ecff;
+}
+
+.overnight .fog-line,
+.overnight .haze-line,
+.overnight .wind-line {
+  stroke: rgba(255, 255, 255, 0.82);
 }
 
 svg {

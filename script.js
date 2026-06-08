@@ -16,7 +16,7 @@ const elements = {
   releaseBadge: document.querySelector("#releaseBadge")
 };
 
-const appRelease = "20260608-1221";
+const appRelease = "20260608-1812";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
@@ -486,10 +486,11 @@ function summarizeWeatherMetrics(periods, representative, fallbackHumidity) {
     humidity: maxOrNull(humidityValues) ?? fallbackHumidity,
     dewPoint: maxOrNull(dewPointValues),
     windMph: maxOrNull(windValues),
-    hasWetForecast: /drizzle|rain|shower|storm|thunder/.test(normalizedForecast),
+    hasWetForecast: /drizzle|rain|shower|storm|thunder|flood/.test(normalizedForecast),
     hasSnowForecast: /snow|sleet|flurr/.test(normalizedForecast),
     hasIceForecast: /ice|freezing rain/.test(normalizedForecast),
-    hasFogForecast: /fog|mist/.test(normalizedForecast)
+    hasFogForecast: /fog|mist/.test(normalizedForecast),
+    hasHazeForecast: /haze|smoke|dust/.test(normalizedForecast)
   };
 }
 
@@ -504,6 +505,12 @@ function chooseWeatherRule(metrics) {
 
   if (precipitationRule) {
     return precipitationRule;
+  }
+
+  const visibilityRule = visibilityWeatherRule(metrics);
+
+  if (visibilityRule) {
+    return visibilityRule;
   }
 
   const temperatureRule = temperatureWeatherRule(metrics);
@@ -532,6 +539,18 @@ function hazardousWeatherRule(metrics) {
     return { condition: "Tornado risk", reason: "hazard", iconForecast: "thunderstorm" };
   }
 
+  if (/hail/.test(metrics.normalizedForecast)) {
+    return { condition: "Hail risk", reason: "hazard", iconForecast: "hail" };
+  }
+
+  if (/severe thunder|severe storm/.test(metrics.normalizedForecast)) {
+    return { condition: "Severe storms", reason: "hazard", iconForecast: "thunderstorm" };
+  }
+
+  if (/flood|heavy rain|torrential|downpour/.test(metrics.normalizedForecast)) {
+    return { condition: "Heavy rain", reason: "hazard", iconForecast: "heavy rain" };
+  }
+
   if (/severe|thunder|storm/.test(metrics.normalizedForecast) && (metrics.precipChance ?? 0) >= rainConditionThreshold) {
     return { condition: "Stormy", reason: "hazard", iconForecast: "thunderstorm" };
   }
@@ -548,8 +567,16 @@ function hazardousWeatherRule(metrics) {
     return { condition: "Dense fog", reason: "hazard", iconForecast: "fog" };
   }
 
-  if (typeof metrics.windMph === "number" && metrics.windMph >= 40) {
-    return { condition: "High wind", reason: "hazard", iconForecast: metrics.forecast };
+  if (/freeze warning|hard freeze|frost/.test(metrics.normalizedForecast)) {
+    return { condition: "Frost or freeze", reason: "hazard", iconForecast: "frost" };
+  }
+
+  if (/wind chill|bitter cold|dangerous cold/.test(metrics.normalizedForecast) || metrics.temperature <= 10) {
+    return { condition: "Bitter cold", reason: "hazard", iconForecast: "wind chill" };
+  }
+
+  if (/damaging wind|high wind|wind advisory/.test(metrics.normalizedForecast) || (typeof metrics.windMph === "number" && metrics.windMph >= 40)) {
+    return { condition: "High wind", reason: "hazard", iconForecast: "wind" };
   }
 
   return null;
@@ -615,6 +642,22 @@ function lowPrecipitationWeatherRule(metrics) {
   return { condition: "Mostly dry", reason: "low-precipitation", iconForecast: skyFallbackForecast(metrics) };
 }
 
+function visibilityWeatherRule(metrics) {
+  if (metrics.hasFogForecast) {
+    return { condition: "Foggy", reason: "visibility", iconForecast: "fog" };
+  }
+
+  if (metrics.hasHazeForecast) {
+    return {
+      condition: /smoke/.test(metrics.normalizedForecast) ? "Smoky" : "Hazy",
+      reason: "visibility",
+      iconForecast: "haze"
+    };
+  }
+
+  return null;
+}
+
 function temperatureWeatherRule(metrics) {
   if (typeof metrics.temperature !== "number") {
     return null;
@@ -633,6 +676,10 @@ function temperatureWeatherRule(metrics) {
 
   if (metrics.temperature <= 32) {
     return { condition: windy ? "Freezing and windy" : "Freezing", reason: "temperature", iconForecast: metrics.forecast };
+  }
+
+  if (/frost|freeze/.test(metrics.normalizedForecast)) {
+    return { condition: "Frost possible", reason: "temperature", iconForecast: "frost" };
   }
 
   if (metrics.temperature <= 45) {
@@ -660,21 +707,17 @@ function windWeatherRule(metrics) {
   }
 
   if (metrics.windMph >= windyThreshold) {
-    return { condition: "Windy", reason: "wind", iconForecast: metrics.forecast };
+    return { condition: "Windy", reason: "wind", iconForecast: "wind" };
   }
 
   if (metrics.windMph >= breezyThreshold) {
-    return { condition: "Breezy", reason: "wind", iconForecast: metrics.forecast };
+    return { condition: "Breezy", reason: "wind", iconForecast: "wind" };
   }
 
   return null;
 }
 
 function skyWeatherRule(metrics) {
-  if (metrics.hasFogForecast) {
-    return { condition: "Foggy", reason: "sky", iconForecast: "fog" };
-  }
-
   if (/overcast|cloudy/.test(metrics.normalizedForecast)) {
     return { condition: "Cloudy", reason: "sky", iconForecast: "cloudy" };
   }
@@ -743,6 +786,10 @@ function weatherDetailForRule(rule, metrics) {
     return `${rule.condition} conditions stand out${windText ? ` with about ${windText}` : ""}.`;
   }
 
+  if (rule.reason === "visibility") {
+    return `${rule.condition} conditions may affect visibility or air quality.`;
+  }
+
   return `${rule.condition}.`;
 }
 
@@ -758,7 +805,7 @@ function isHumid(metrics) {
 }
 
 function skyFallbackForecast(metrics) {
-  if (/cloud|overcast|fog|mist/.test(metrics.normalizedForecast)) {
+  if (/cloud|overcast|fog|mist|haze|smoke|dust/.test(metrics.normalizedForecast)) {
     return metrics.forecast;
   }
 
@@ -1218,8 +1265,12 @@ function isSameCalendarDay(left, right) {
 function iconForForecast(forecast = "", partKey) {
   const normalized = forecast.toLowerCase();
 
-  if (partKey === "overnight" && !/cloud|rain|storm|snow|sleet|ice|freezing|fog/.test(normalized)) {
+  if (partKey === "overnight" && !/cloud|rain|storm|snow|sleet|ice|freezing|fog|haze|smoke|dust|hail|wind|frost|freeze|flood/.test(normalized)) {
     return "moon";
+  }
+
+  if (/hail/.test(normalized)) {
+    return partKey === "overnight" ? "moon-hail" : "hail";
   }
 
   if (/thunder|storm/.test(normalized)) {
@@ -1234,8 +1285,24 @@ function iconForForecast(forecast = "", partKey) {
     return partKey === "overnight" ? "moon-snow" : "snow";
   }
 
-  if (/rain|showers|drizzle/.test(normalized)) {
+  if (/rain|showers|drizzle|flood|downpour/.test(normalized)) {
     return partKey === "overnight" ? "moon-rain" : "rain";
+  }
+
+  if (/fog|mist/.test(normalized)) {
+    return partKey === "overnight" ? "moon-fog" : "fog";
+  }
+
+  if (/haze|smoke|dust/.test(normalized)) {
+    return partKey === "overnight" ? "moon-haze" : "haze";
+  }
+
+  if (/wind|breezy/.test(normalized)) {
+    return partKey === "overnight" ? "moon-wind" : "wind";
+  }
+
+  if (/frost|freeze|cold/.test(normalized)) {
+    return partKey === "overnight" ? "moon-ice" : "ice";
   }
 
   if (/cloud|overcast|fog|mist/.test(normalized)) {
@@ -1267,6 +1334,10 @@ function weatherIcon(name) {
   const rainDrops = `<path class="rain-drop" d="M54 130l-8 14M86 130l-8 14M118 130l-8 14" stroke-linecap="round" stroke-width="7"/>`;
   const snowflakes = `<g class="snowflake"><path d="M50 131v14M43 138h14M45 133l10 10M55 133l-10 10M92 128v14M85 135h14M87 130l10 10M97 130l-10 10M132 132v14M125 139h14M127 134l10 10M137 134l-10 10" stroke-linecap="round" stroke-width="4"/></g>`;
   const iceMarks = `<g class="ice-mark"><path d="M50 130l9 10-9 10-9-10 9-10ZM91 128l10 12-10 12-10-12 10-12ZM132 131l8 10-8 10-8-10 8-10Z"/></g>`;
+  const hailMarks = `<g class="hail-mark"><circle cx="50" cy="139" r="6"/><circle cx="91" cy="137" r="6"/><circle cx="132" cy="140" r="6"/></g>`;
+  const fogLines = `<g class="fog-line"><path d="M35 130h106M47 143h82M24 117h128" stroke-linecap="round" stroke-width="6"/></g>`;
+  const hazeLines = `<g class="haze-line"><path d="M30 124c18-8 34-8 52 0s34 8 54 0M38 140c14-6 28-6 42 0s28 6 44 0" stroke-linecap="round" stroke-width="5"/></g>`;
+  const windLines = `<g class="wind-line"><path d="M27 118h81c13 0 20-6 20-16 0-7-5-12-13-12-7 0-12 4-14 10M42 136h88M33 101h49" stroke-linecap="round" stroke-width="7"/></g>`;
   const lightning = `<path class="lightning" d="M95 76 76 112h18l-8 29 31-44H98l13-21Z"/>`;
 
   if (name === "sun") {
@@ -1297,6 +1368,22 @@ function weatherIcon(name) {
     return `<svg viewBox="0 0 176 150" aria-hidden="true">${cloud}${iceMarks}</svg>`;
   }
 
+  if (name === "hail") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true">${cloud}${hailMarks}</svg>`;
+  }
+
+  if (name === "fog") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true">${cloud}${fogLines}</svg>`;
+  }
+
+  if (name === "haze") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true">${sun}${hazeLines}</svg>`;
+  }
+
+  if (name === "wind") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true">${cloud}${windLines}</svg>`;
+  }
+
   if (name === "moon-rain") {
     return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/>${cloud.replace('d="M52', 'd="M64')}${rainDrops}</svg>`;
   }
@@ -1311,6 +1398,22 @@ function weatherIcon(name) {
 
   if (name === "moon-ice") {
     return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/>${cloud.replace('d="M52', 'd="M64')}${iceMarks}</svg>`;
+  }
+
+  if (name === "moon-hail") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/>${cloud.replace('d="M52', 'd="M64')}${hailMarks}</svg>`;
+  }
+
+  if (name === "moon-fog") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/>${cloud.replace('d="M52', 'd="M64')}${fogLines}</svg>`;
+  }
+
+  if (name === "moon-haze") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/>${hazeLines}</svg>`;
+  }
+
+  if (name === "moon-wind") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/>${cloud.replace('d="M52', 'd="M64')}${windLines}</svg>`;
   }
 
   return `<svg viewBox="0 0 176 150" aria-hidden="true">${sun}${cloud}</svg>`;
