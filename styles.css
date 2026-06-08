@@ -747,6 +747,16 @@ a:focus-visible {
   fill: rgba(255, 255, 255, 0.94);
 }
 
+.rain-drop {
+  stroke: #1784da;
+}
+
+.lightning {
+  fill: #ffc227;
+  stroke: rgba(122, 74, 0, 0.24);
+  stroke-width: 2;
+}
+
 .moon {
   fill: #fff6b2;
 }
@@ -757,6 +767,10 @@ a:focus-visible {
 
 .overnight .cloud {
   fill: rgba(255, 255, 255, 0.9);
+}
+
+.overnight .rain-drop {
+  stroke: #9bd4ff;
 }
 
 svg {

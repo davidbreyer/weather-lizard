@@ -16,7 +16,7 @@ const elements = {
   releaseBadge: document.querySelector("#releaseBadge")
 };
 
-const appRelease = "20260605-2026";
+const appRelease = "20260608-1138";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
@@ -1222,7 +1222,15 @@ function iconForForecast(forecast = "", partKey) {
     return "moon";
   }
 
-  if (/thunder|storm|rain|showers|drizzle|snow|sleet|ice|freezing/.test(normalized)) {
+  if (/thunder|storm/.test(normalized)) {
+    return partKey === "overnight" ? "moon-storm" : "storm";
+  }
+
+  if (/rain|showers|drizzle/.test(normalized)) {
+    return partKey === "overnight" ? "moon-rain" : "rain";
+  }
+
+  if (/snow|sleet|ice|freezing/.test(normalized)) {
     return partKey === "overnight" ? "moon-cloud" : "partly";
   }
 
@@ -1252,6 +1260,8 @@ function makeStats(stats) {
 function weatherIcon(name) {
   const sun = `<g><circle cx="88" cy="50" r="34" class="sun-core"/><path d="M88 1v22M88 77v22M39 50h22M115 50h22M53 15l16 16M123 15l-16 16M53 85l16-16M123 85l-16-16" class="sun-ray"/></g>`;
   const cloud = `<path class="cloud" d="M52 119h75c19 0 34-14 34-31s-15-31-34-31c-5 0-10 1-14 3C106 43 91 32 72 32c-24 0-43 19-43 43v2C17 80 8 91 8 103c0 10 9 16 20 16h24Z"/>`;
+  const rainDrops = `<path class="rain-drop" d="M54 130l-8 14M86 130l-8 14M118 130l-8 14" stroke-linecap="round" stroke-width="7"/>`;
+  const lightning = `<path class="lightning" d="M95 76 76 112h18l-8 29 31-44H98l13-21Z"/>`;
 
   if (name === "sun") {
     return `<svg viewBox="0 0 176 150" aria-hidden="true">${sun}</svg>`;
@@ -1263,6 +1273,22 @@ function weatherIcon(name) {
 
   if (name === "moon-cloud") {
     return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/><path d="M134 22v10M134 52v10M114 42h10M144 42h10" stroke="#fff" stroke-linecap="round" stroke-width="4"/>${cloud.replace('d="M52', 'd="M64')}</svg>`;
+  }
+
+  if (name === "rain") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true">${cloud}${rainDrops}</svg>`;
+  }
+
+  if (name === "storm") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true">${cloud}${lightning}${rainDrops}</svg>`;
+  }
+
+  if (name === "moon-rain") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/>${cloud.replace('d="M52', 'd="M64')}${rainDrops}</svg>`;
+  }
+
+  if (name === "moon-storm") {
+    return `<svg viewBox="0 0 176 150" aria-hidden="true"><path class="moon" d="M102 4c-34 8-58 39-52 74 6 34 38 57 72 51-17-10-29-27-32-47-4-29 1-52 12-78Z"/>${cloud.replace('d="M52', 'd="M64')}${lightning}${rainDrops}</svg>`;
   }
 
   return `<svg viewBox="0 0 176 150" aria-hidden="true">${sun}${cloud}</svg>`;
