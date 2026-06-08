@@ -751,6 +751,17 @@ a:focus-visible {
   stroke: #1784da;
 }
 
+.snowflake {
+  fill: none;
+  stroke: #dff4ff;
+}
+
+.ice-mark {
+  fill: rgba(160, 215, 255, 0.78);
+  stroke: #1784da;
+  stroke-width: 2;
+}
+
 .lightning {
   fill: #ffc227;
   stroke: rgba(122, 74, 0, 0.24);
@@ -771,6 +782,15 @@ a:focus-visible {
 
 .overnight .rain-drop {
   stroke: #9bd4ff;
+}
+
+.overnight .snowflake {
+  stroke: #fff;
+}
+
+.overnight .ice-mark {
+  fill: rgba(210, 240, 255, 0.84);
+  stroke: #c7ecff;
 }
 
 svg {
