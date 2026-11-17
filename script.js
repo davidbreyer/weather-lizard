@@ -1,5 +1,6 @@
 const elements = {
   refreshButton: document.querySelector("#refreshButton"),
+  defaultLocationButton: document.querySelector("#defaultLocationButton"),
   statusMessage: document.querySelector("#statusMessage"),
   currentConditionsLabel: document.querySelector("#currentConditionsLabel"),
   lastLoadedLabel: document.querySelector("#lastLoadedLabel"),
@@ -16,7 +17,7 @@ const elements = {
   releaseBadge: document.querySelector("#releaseBadge")
 };
 
-const appRelease = "20260608-1812";
+const appRelease = "20261116-2104";
 
 const nwsHeaders = {
   Accept: "application/geo+json"
@@ -40,64 +41,94 @@ const defaultLocation = {
   longitude: -84.5120
 };
 
-let hasLoadedWeather = false;
-let activeLocationSource = "default";
+// Shared with Lizard Dashboard on the same origin.
+const weatherLocationKey = "weather-lizard.location.v1";
+let activeLocation = readWeatherLocation() ?? defaultLocation;
 let selectedDay = "today";
 let latestWeatherData = null;
 let activeDetailKey = null;
 let currentDayPartCards = [];
 
-elements.refreshButton.addEventListener("click", loadWeatherForCurrentLocation);
+elements.refreshButton.addEventListener("click", () => refreshForecast("locate"));
+elements.defaultLocationButton.addEventListener("click", () => refreshForecast("default"));
 elements.alertsToggle.addEventListener("click", toggleAlerts);
 elements.dayTabs.forEach((tab) => {
   tab.addEventListener("click", () => setSelectedDay(tab.dataset.day));
 });
 
-async function loadWeatherForCurrentLocation() {
+function approximateWeatherLocation(coords) {
+  const { latitude, longitude } = coords ?? {};
+  if (!Number.isFinite(latitude) || Math.abs(latitude) > 90 ||
+      !Number.isFinite(longitude) || Math.abs(longitude) > 180) return null;
+  return { latitude: Number(latitude.toFixed(3)), longitude: Number(longitude.toFixed(3)) };
+}
+
+function readWeatherLocation() {
+  try {
+    return approximateWeatherLocation(JSON.parse(localStorage.getItem(weatherLocationKey)));
+  } catch {
+    return null;
+  }
+}
+
+function saveWeatherLocation(location) {
+  try {
+    if (location) localStorage.setItem(weatherLocationKey, JSON.stringify(location));
+    else localStorage.removeItem(weatherLocationKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function refreshForecast(mode = "refresh") {
+  let preferenceSaved = true;
+  if (mode === "default") {
+    activeLocation = defaultLocation;
+    preferenceSaved = saveWeatherLocation(null);
+  }
+  let location = activeLocation;
+  if (!latestWeatherData) elements.locationLabel.textContent = location.label || "Saved location";
   setLoadingState(true);
-  const previousLocationSource = activeLocationSource;
-  activeLocationSource = "precise";
-  setStatus("Getting your precise location...");
+  setStatus(mode === "locate" ? "Getting your location…" : "Loading the forecast…");
   renderForecast(buildLoadingDayParts());
 
   try {
-    const position = await getCurrentPosition();
-    await loadWeatherForCoordinates({
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      source: "precise"
-    });
+    if (mode === "locate") {
+      const position = await getCurrentPosition();
+      location = approximateWeatherLocation(position.coords);
+      if (!location) throw new Error("Your location could not be determined.");
+    }
+    await loadWeatherForCoordinates(location);
+    activeLocation = location;
+    if (mode === "locate") preferenceSaved = saveWeatherLocation(location);
+
+    if (!preferenceSaved) {
+      setStatus("Forecast loaded. The location change could not be saved in this browser.", "error");
+    } else if (mode === "locate") {
+      setStatus("Forecast loaded. Your location is saved in this browser.", "success");
+    } else {
+      setStatus(location === defaultLocation
+        ? "Showing the Cincinnati forecast. Use your location for a local forecast."
+        : "Showing the forecast for your saved location.", "success");
+    }
   } catch (error) {
-    activeLocationSource = previousLocationSource;
     if (latestWeatherData) {
       const context = buildWeatherContext(latestWeatherData, selectedDay);
       renderForecast(context.dayPartCards);
+      setStatus(`${error.message} Showing your last loaded forecast.`, "error");
+    } else {
+      renderForecast(buildEmptyDayParts());
+      elements.currentConditionsLabel.textContent = "Right now: forecast unavailable.";
+      clearAlerts();
+      setStatus(error.message, "error");
     }
-    setStatus(hasLoadedWeather ? `${error.message} Showing your last loaded forecast.` : error.message, "error");
   } finally {
     setLoadingState(false);
   }
 }
 
-async function loadDefaultWeather() {
-  activeLocationSource = "default";
-  setLoadingState(true);
-  setStatus(`Loading default forecast for ${defaultLocation.label}...`);
-  renderForecast(buildLoadingDayParts());
-
-  try {
-    await loadWeatherForCoordinates({ ...defaultLocation, source: "default" });
-  } catch (error) {
-    renderForecast(buildEmptyDayParts());
-    elements.currentConditionsLabel.textContent = "Right now: default forecast could not load.";
-    clearAlerts();
-    setStatus(error.message, "error");
-  } finally {
-    setLoadingState(false);
-  }
-}
-
-async function loadWeatherForCoordinates({ latitude, longitude, label, source }) {
+async function loadWeatherForCoordinates({ latitude, longitude, label }) {
   setStatus("Finding your National Weather Service forecast office...");
 
   const pointData = await fetchJson(
@@ -125,8 +156,9 @@ async function loadWeatherForCoordinates({ latitude, longitude, label, source })
   ]);
 
   const observation = await fetchJson(`${stationUrl}/observations/latest`);
-  latestWeatherData = { hourlyForecast, observation, nearbyLocation, stationUrl, gridData };
-  const context = buildWeatherContext(latestWeatherData, selectedDay);
+  const weatherData = { hourlyForecast, observation, nearbyLocation, stationUrl, gridData };
+  const context = buildWeatherContext(weatherData, selectedDay);
+  latestWeatherData = weatherData;
 
   elements.locationLabel.textContent = nearbyLocation;
   elements.currentConditionsLabel.textContent = context.currentConditions;
@@ -134,15 +166,7 @@ async function loadWeatherForCoordinates({ latitude, longitude, label, source })
   renderBottom(context.bottomStats);
   renderAlerts(alertsData);
 
-  hasLoadedWeather = true;
-  activeLocationSource = source;
   setLastLoaded(new Date());
-  setStatus(
-    source === "default"
-      ? "Showing default forecast for 45202. Use your location for a more precise forecast."
-      : "Your location-based forecast is loaded.",
-    "success"
-  );
 }
 
 function setSelectedDay(day) {
@@ -1024,11 +1048,9 @@ function toggleAlerts() {
 
 function setLoadingState(isLoading) {
   elements.refreshButton.disabled = isLoading;
-  elements.refreshButton.querySelector("span:last-child").textContent = isLoading
-    ? "Loading..."
-    : hasLoadedWeather && activeLocationSource === "precise"
-      ? "Refresh weather"
-      : "Use my location";
+  elements.defaultLocationButton.disabled = isLoading;
+  elements.defaultLocationButton.hidden = activeLocation === defaultLocation;
+  elements.refreshButton.querySelector("span:last-child").textContent = isLoading ? "Loading…" : "Use my location";
 }
 
 function setStatus(message, type = "info") {
@@ -1464,4 +1486,4 @@ renderBottom([
   ["visibility", "Visibility", "--"],
   ["wind", "Station", "--"]
 ]);
-loadDefaultWeather();
+refreshForecast();

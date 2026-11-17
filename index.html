@@ -16,8 +16,8 @@
     />
     <meta property="og:type" content="website" />
     <title>Weather Lizard</title>
-    <link rel="icon" type="image/png" href="assets/yelling-lizard-logo.png?v=20260608-1812" />
-    <link rel="stylesheet" href="styles.css?v=20260608-1812" />
+    <link rel="icon" type="image/png" href="assets/yelling-lizard-logo.png?v=20261116-2104" />
+    <link rel="stylesheet" href="styles.css?v=20261116-2104" />
   </head>
   <body>
     <main class="page">
@@ -25,7 +25,7 @@
         <header class="topbar">
           <div class="brand">
             <span class="brand-mark" aria-hidden="true">
-              <img src="assets/yelling-lizard-logo.png?v=20260608-1812" alt="" />
+              <img src="assets/yelling-lizard-logo.png?v=20261116-2104" alt="" />
             </span>
             <span>Weather Lizard</span>
           </div>
@@ -46,15 +46,16 @@
               <span aria-hidden="true" data-icon="target"></span>
               <span>Use my location</span>
             </button>
+            <button id="defaultLocationButton" class="location-reset" type="button" hidden>Use Cincinnati</button>
           </div>
         </header>
 
         <section class="status-strip" aria-live="polite">
           <div>
             <p id="statusMessage" class="status-message status-message--info">
-              Loading a default 45202 forecast. Use your location for a more precise forecast.
+              Loading the forecast…
             </p>
-            <p id="currentConditionsLabel" class="current-conditions-label">Right now: loading Cincinnati conditions.</p>
+            <p id="currentConditionsLabel" class="current-conditions-label">Right now: loading current conditions.</p>
           </div>
           <p id="lastLoadedLabel" class="last-loaded-label">Loading NWS data...</p>
         </section>
@@ -96,6 +97,6 @@
 
     <div id="releaseBadge" class="release-badge" aria-label="Current release"></div>
 
-    <script src="script.js?v=20260608-1812"></script>
+    <script src="script.js?v=20261116-2104"></script>
   </body>
 </html>

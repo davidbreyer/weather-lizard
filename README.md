@@ -9,7 +9,7 @@ The goal is to make the forecast feel quick to read. Instead of dumping raw hour
 - Four forecast cards for Morning, Afternoon, Evening, and Overnight
 - `Today` and `Tomorrow` tabs
 - Default 45202 forecast so the page never opens empty
-- Browser geolocation for a more precise local forecast
+- Browser geolocation for a local forecast, with the choice saved in this browser
 - Active NWS alert banner
 - Current conditions and station details
 - Custom Weather Lizard logo
@@ -40,8 +40,8 @@ http://localhost:8000
 
 ## Data Flow
 
-1. Load the default forecast for ZIP code 45202.
-2. If requested, get latitude and longitude from browser geolocation.
+1. Load the saved location or start with Cincinnati, OH 45202.
+2. When **Use my location** is selected, look up a local forecast and remember the coordinates rounded to three decimal places. **Use Cincinnati** clears that choice.
 3. Call `https://api.weather.gov/points/{lat},{lon}`.
 4. Follow the returned `forecastHourly` URL.
 5. Fetch the nearest observation station and latest observation.
